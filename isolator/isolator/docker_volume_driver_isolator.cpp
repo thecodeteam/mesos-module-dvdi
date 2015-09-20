@@ -19,14 +19,18 @@
 
 #include "docker_volume_driver_isolator.hpp"
 
+#include <list>
+#include <glog/logging.h>
+#include <mesos/type_utils.hpp>
+
 #include <process/process.hpp>
 #include <process/subprocess.hpp>
 
-#include <list>
-#include <glog/logging.h>
+#include "common/protobuf_utils.hpp"
+
+
 #include "linux/fs.hpp"
-#include  <stout/foreach.hpp>
-#include <hashset.hpp>
+#include <boost/foreach.hpp>
 
 using namespace process;
 
@@ -119,10 +123,9 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
 
   foreach (const ExecutorRunState& state, states) {
     Owned<Info> info(new Info(state.directory()));
-    inUseDirs.insert(state.directory());
-    infos.put(state.container_id(), info);
+    inUseDirs.insert(state.directory) ;
+    infos.put(state.id, info);
   }
-
   // infos now has a root mount directory for every task now running
 
   // Recover both known and unknown orphans by scanning the mount
@@ -154,7 +157,7 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
   }
 
   // TODO
-  // for each orphan
+  // for each orphan in unknown orphans
   //   extract volume name from mount
   //   go/src/github.com/clintonskitson/dvdcli/dvdcli unmount --volumedriver=rexray --volumename=<name>
 
@@ -207,8 +210,7 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
 	const Option<string>& rootfs,
     const Option<string>& user)
 {
-// TODO use subprocess
-// use <process::Subprocess> child = process::subprocess
+// TODO remove this temporary code to show we invoked isolator prepare ny touching a file in /tmp
   if (system(NULL)) { // Is a command processor available?
     int i = system("touch /tmp/SharedFilesystemIsolatorProcess-prepare-called.txt");
     if( 0 != i ) {
@@ -231,20 +233,33 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
     return None();
   }
 
+  std::string volumeName;
+  JSON::Object environment;
+  JSON::Array jsonVariables;
+
+  // We may want to use the directory to indicate volumeName even though
+  // initial plan was environment variable. For now code will take either
+
   // get things we need from task's environment in ExecutoInfo
   if (!executorInfo.command().has_environment()) {
 	   // No environment means no external volume specification
 	  // not an error, just nothing to do so return None.
-	  return None();
+	  // return None();
   }
-  executorInfo.command().environment().Environment().
+  //const Environment_Variable& =
+	const mesos::Environment_Variable& myvar =	  executorInfo.command().environment().variables().Get(0);
   // iterate through the environment variables,
   // looking for the ones we need
-  Environment::
-  foreach (const Environment::Variable& variable,
+  foreach (const mesos:: Environment_Variable& variable,
            executorInfo.command().environment().variables()) {
-    if (variable. )
+       JSON::Object variableObject;
+      variableObject.values["name"] = variable.name();
+      variableObject.values["value"] = variable.value();
+      jsonVariables.values.push_back(variableObject);
   }
+  environment.values["variables"] = jsonVariables;
+
+
 
   // We don't support mounting to a container path which is a parent
   // to another container path as this can mask entries. We'll keep
@@ -309,6 +324,13 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
         return Failure("Relative host path '" +
                        hostPath +
                        "' cannot contain relative components");
+      }
+
+      if (system(NULL)) { // Is a command processor available?
+        int i = system("/go/src/github.com/clintonskitson/dvdcli/dvdcli path --volumedriver=rexray --volumename=test");
+        if( 0 != i ) {
+          LOG(WARNING) << "touch command failed";
+        }
       }
 
       Try<Nothing> mkdir = os::mkdir(hostPath, true);
