@@ -128,15 +128,10 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
   }
   // infos now has a root mount directory for every task now running
 
-  // Recover both known and unknown orphans by scanning the mount
-  // table and finding those mounts whose roots are under slave's
-  // sandbox root directory. Those mounts are container's work
-  // directory mounts. Mounts from unknown orphans will be cleaned up
-  // immediately. Mounts from known orphans will be cleaned up when
+  //  Mounts from unknown orphans will be cleaned up now.
+  // Mounts from known orphans will be cleaned up when
   // those known orphan containers are being destroyed by the slave.
   set<std::string> unknownOrphans;
-
-  const std::string REXRAY_MOUNT_PREFIX = "/var/lib/rexray/volumes/";
 
   foreach (const fs::MountInfoTable::Entry& entry, table.get().entries) {
     if (!strings::startsWith(entry.root, REXRAY_MOUNT_PREFIX)) {
@@ -147,7 +142,7 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
     foreach (const Info& info, infos) {
 	  if (entry.root == info.mountrootpath) {
 	    dirInUse = true;
-        break; // a known container is associated with this mount
+        break; // a known container is associated with this mount,
       }
     }
     if (dirInUse) {
@@ -156,12 +151,23 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
     unknownOrphans.insert(entry.root);
   }
 
-  // TODO
-  // for each orphan in unknown orphans
-  //   extract volume name from mount
-  //   go/src/github.com/clintonskitson/dvdcli/dvdcli unmount --volumedriver=rexray --volumename=<name>
+  foreach (const std::string orphan, unknownOrphans) {
 
+	  if (orphan.length() <= REXRAY_MOUNT_PREFIX.length()) {
+		  // too small to include a valid rexray mount
+		  continue;
+	  }
+	  const std::string volumeName = orphan.substr(REXRAY_MOUNT_PREFIX.length());
 
+	  if (system(NULL)) { // Is a command processor available?
+		std::string cmd = REXRAY_DVDCLI_UNMOUNT_CMD + volumeName;
+	    int i = system(cmd.c_str());
+	    if( 0 != i ) {
+	        return Failure("recover() failed to execute unmount command " + cmd );
+	    }
+	  }
+
+  }
   return Nothing();
 }
 
@@ -212,9 +218,9 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
 {
 // TODO remove this temporary code to show we invoked isolator prepare ny touching a file in /tmp
   if (system(NULL)) { // Is a command processor available?
-    int i = system("touch /tmp/SharedFilesystemIsolatorProcess-prepare-called.txt");
+    int i = system("touch /tmp/DockerVolumeDriverIsolatorProcess-prepare-called.txt");
     if( 0 != i ) {
-      LOG(WARNING) << "touch command failed in SharedFilesystemIsolatorProcess";
+      LOG(WARNING) << "touch command failed in DockerVolumeDriverIsolatorProcesss";
     }
   }
 
@@ -246,8 +252,7 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
 	  // not an error, just nothing to do so return None.
 	  // return None();
   }
-  //const Environment_Variable& =
-	const mesos::Environment_Variable& myvar =	  executorInfo.command().environment().variables().Get(0);
+
   // iterate through the environment variables,
   // looking for the ones we need
   foreach (const mesos:: Environment_Variable& variable,
@@ -256,10 +261,26 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
       variableObject.values["name"] = variable.name();
       variableObject.values["value"] = variable.value();
       jsonVariables.values.push_back(variableObject);
+
+      if (variable.name() == REXRAY_MOUNT_VOL_ENVIRONMENT_VAR_NAME) {
+    	  volumeName = variable.value();
+      }
   }
   environment.values["variables"] = jsonVariables;
 
+  if (volumeName.empty()) {
+      LOG(WARNING) << "No " << REXRAY_MOUNT_VOL_ENVIRONMENT_VAR_NAME << " environment variable specified for container ";
+  }
 
+  if (system(NULL)) { // Is a command processor available?
+	std::string cmd = REXRAY_DVDCLI_MOUNT_CMD + volumeName;
+    int i = system(cmd.c_str());
+    if( 0 != i ) {
+        return Failure("Failed to execute mount command " + cmd );
+    }
+  }
+
+  infos.insert(containerId,  )
 
   // We don't support mounting to a container path which is a parent
   // to another container path as this can mask entries. We'll keep
@@ -289,8 +310,6 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
     // Check we won't mask another volume.
     // NOTE: Assuming here that the container path is absolute, see
     // Volume protobuf.
-    // TODO(idownes): This test is unnecessarily strict and could be
-    // relaxed if mounts could be re-ordered.
     foreach (const string& containerPath, containerPaths) {
       if (strings::startsWith(volume.container_path(), containerPath)) {
         return Failure("Cannot mount volume to '" +
@@ -327,6 +346,7 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
       }
 
       if (system(NULL)) { // Is a command processor available?
+    	std::string = REXRAY_DVDCLI_MOUNT_CMD +
         int i = system("/go/src/github.com/clintonskitson/dvdcli/dvdcli path --volumedriver=rexray --volumename=test");
         if( 0 != i ) {
           LOG(WARNING) << "touch command failed";
@@ -423,36 +443,45 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::cleanup(
 {
   if (!infos.contains(containerId)) {
 	  return Nothing();
-  }return Nothing();
-  CHECK(infos.contains(containerId));
+  }
   const Owned<Info>& info = infos[containerId];
-  const std:string& mountpath = info->
-  // This container
-  foreach (const Info& info, infos) {
 
-  // Cleanup of mounts is done automatically done by the kernel when
-  // the mount namespace is destroyed after the last process
-  // terminates.
-	  set<std::string> unknownOrphans;
+  if (info->mountrootpath.length() <= REXRAY_MOUNT_PREFIX.length()) {
+	  // too small to include a valid rexray mount
+	  return Nothing();
+  }
 
-	  const std::string REXRAY_MOUNT_PREFIX = "/var/lib/rexray/volumes/";
+  if (!strings::startsWith(info->mountrootpath, REXRAY_MOUNT_PREFIX)) {
+       continue; // not a mount created by this isolator
+  }
 
-	  foreach (const fs::MountInfoTable::Entry& entry, table.get().entries) {
-	    if (!strings::startsWith(entry.root, REXRAY_MOUNT_PREFIX)) {
-	      continue; // not a mount created by this isolator
-	    }
-	    bool dirInUse = false;
+  const std::string mountToRelease = info->mountrootpath;
+  // we have now confirmed that this is a docker volume driver mount
+  // next check if we are the last and only task using this mount
+  for (std::map<ContainerID, process::Owned<Info>>::iterator ii=infos.begin(); ii!=infos.end(); ++ii) {
+	  if ((*ii).first == containerId) {
+		  // this is the entry for the task beiong cleaned up
+		  continue;
+	  }
+	  if (mountToRelease == (*ii).second->mountrootpath) {
+		  // another task is using this mount
+		  // remove our use indication, but leave mount in place
+		  infos.erase(containerId);
+		  return Nothing();
+	  }
+  }
 
-	    foreach (const Info& info, infos) {
-		  if (entry.root == info.mountrootpath) {
-		    dirInUse = true;
-	        break; // a known container is associated with this mount
-	      }
-	    }
-	    if (dirInUse) {
-	    	continue;
-	    }
-	    unknownOrphans.insert(entry.root);
+  const std::string volumeName = info->mountrootpath.substr(REXRAY_MOUNT_PREFIX.length());
+
+  if (system(NULL)) { // Is a command processor available?
+	std::string cmd = REXRAY_DVDCLI_UNMOUNT_CMD + volumeName;
+    int i = system(cmd.c_str());
+    if( 0 != i ) {
+        return Failure("Failed to execute unmount command " + cmd );
+    }
+  }
+
+  infos.erase(containerId);
 
   return Nothing();
 }
