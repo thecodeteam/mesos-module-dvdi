@@ -1,0 +1,18 @@
+[
+  {
+    "id": "A",
+    "url": "http://probe-a-star-before.marathon.mesos:9000/status"
+  },
+  {
+    "id": "B",
+    "url": "http://probe-b-star-before.marathon.mesos:9000/status"
+  },
+  {
+    "id": "C",
+    "url": "http://probe-c-star-before.marathon.mesos:9000/status"
+  },
+  {
+    "id": "D",
+    "url": "http://probe-d-star-before.marathon.mesos:9000/status"
+  }
+]

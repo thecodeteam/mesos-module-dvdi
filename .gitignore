@@ -1,0 +1,33 @@
+# Files created by ./bootstrap.
+.reviewboardrc
+Makefile.in
+aclocal.m4
+ar-lib
+autom4te.cache
+compile
+config.guess
+config.sub
+configure
+depcomp
+install-sh
+libtool.m4
+ltmain.sh
+ltoptions.m4
+ltsugar.m4
+ltversion.m4
+lt~obsolete.m4
+missing
+
+*.pyc
+
+# Recommended build directory.
+build/*
+isolator/build/*
+
+# CTags
+.tags
+.tags_sorted_by_file
+
+# Other deps
+dvdi-node-*.tar
+docker-compose
