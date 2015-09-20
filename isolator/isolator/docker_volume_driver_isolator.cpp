@@ -25,6 +25,8 @@
 #include <list>
 #include <glog/logging.h>
 #include "linux/fs.hpp"
+#include  <stout/foreach.hpp>
+#include <hashset.hpp>
 
 using namespace process;
 
@@ -91,11 +93,18 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
   // The orphans parameter is list of tasks (ContainerID) still running now.
   // The states parameter is a list of structures containing a tuples
   // of (ContainerID, pid, directory) where directory is the slave directory
-  // specified at task launch
+  // specified at task launch.
   // We need to rebuild mount ref counts using these.
   // However there is also a possibility that a task
   // terminated while we were gone, leaving a "orphanned" mount.
   // If any of these exist, they should be unmounted.
+  // Recovery will only be viable if the directory is aligned to
+  // the slave root mount point. Otherwise we have no means to
+  // determine which mount is associated with which task, because the
+  // environment for the task is not available to us.
+  // Sometime after the 0.23.0 release a ContainerState will be provided
+  // instead of the current ExecutorRunState.
+
 
   // Read the mount table in the host mount namespace to recover paths
   // to device mountpoints.
@@ -106,58 +115,48 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
     return Failure("Failed to get mount table: " + table.error());
   }
 
-  foreach (const ContainerState& state, states) {
+  hashset<std::string> inUseDirs;
+
+  foreach (const ExecutorRunState& state, states) {
     Owned<Info> info(new Info(state.directory()));
+    inUseDirs.insert(state.directory());
+    infos.put(state.container_id(), info);
+  }
 
-	    foreach (const fs::MountInfoTable::Entry& entry, table.get().entries) {
-	      if (entry.root == info->directory) {
-	        info->sandbox = entry.target;
-	        break;
-	      }
-	    }
+  // infos now has a root mount directory for every task now running
 
-	    infos.put(state.container_id(), info);
-	  }
+  // Recover both known and unknown orphans by scanning the mount
+  // table and finding those mounts whose roots are under slave's
+  // sandbox root directory. Those mounts are container's work
+  // directory mounts. Mounts from unknown orphans will be cleaned up
+  // immediately. Mounts from known orphans will be cleaned up when
+  // those known orphan containers are being destroyed by the slave.
+  set<std::string> unknownOrphans;
 
-	  // Recover both known and unknown orphans by scanning the mount
-	  // table and finding those mounts whose roots are under slave's
-	  // sandbox root directory. Those mounts are container's work
-	  // directory mounts. Mounts from unknown orphans will be cleaned up
-	  // immediately. Mounts from known orphans will be cleaned up when
-	  // those known orphan containers are being destroyed by the slave.
-	  hashset<ContainerID> unknownOrphans;
+  const std::string REXRAY_MOUNT_PREFIX = "/var/lib/rexray/volumes/";
 
-	  string sandboxRootDir = paths::getSandboxRootDir(flags.work_dir);
+  foreach (const fs::MountInfoTable::Entry& entry, table.get().entries) {
+    if (!strings::startsWith(entry.root, REXRAY_MOUNT_PREFIX)) {
+      continue; // not a mount created by this isolator
+    }
+    bool dirInUse = false;
 
-	  foreach (const fs::MountInfoTable::Entry& entry, table.get().entries) {
-	    if (!strings::startsWith(entry.root, sandboxRootDir)) {
-	      continue;
-	    }
+    foreach (const Info& info, infos) {
+	  if (entry.root == info.mountrootpath) {
+	    dirInUse = true;
+        break; // a known container is associated with this mount
+      }
+    }
+    if (dirInUse) {
+    	continue;
+    }
+    unknownOrphans.insert(entry.root);
+  }
 
-	    // TODO(jieyu): Here, we retrieve the container ID by taking the
-	    // basename of 'entry.root'. This assumes that the slave's sandbox
-	    // root directory are organized according to the comments in the
-	    // beginning of slave/paths.hpp.
-	    ContainerID containerId;
-	    containerId.set_value(Path(entry.root).basename());
-
-	    if (infos.contains(containerId)) {
-	      continue;
-	    }
-
-	    Owned<Info> info(new Info(entry.root));
-
-	    if (entry.root != entry.target) {
-	      info->sandbox = entry.target;
-	    }
-
-	    infos.put(containerId, info);
-
-	    // Remember all the unknown orphan containers.
-	    if (!orphans.contains(containerId)) {
-	      unknownOrphans.insert(containerId);
-	    }
-	  }
+  // TODO
+  // for each orphan
+  //   extract volume name from mount
+  //   go/src/github.com/clintonskitson/dvdcli/dvdcli unmount --volumedriver=rexray --volumename=<name>
 
 
   return Nothing();
@@ -400,9 +399,38 @@ Future<ResourceStatistics> DockerVolumeDriverIsolatorProcess::usage(
 Future<Nothing> DockerVolumeDriverIsolatorProcess::cleanup(
     const ContainerID& containerId)
 {
+  if (!infos.contains(containerId)) {
+	  return Nothing();
+  }return Nothing();
+  CHECK(infos.contains(containerId));
+  const Owned<Info>& info = infos[containerId];
+  const std:string& mountpath = info->
+  // This container
+  foreach (const Info& info, infos) {
+
   // Cleanup of mounts is done automatically done by the kernel when
   // the mount namespace is destroyed after the last process
   // terminates.
+	  set<std::string> unknownOrphans;
+
+	  const std::string REXRAY_MOUNT_PREFIX = "/var/lib/rexray/volumes/";
+
+	  foreach (const fs::MountInfoTable::Entry& entry, table.get().entries) {
+	    if (!strings::startsWith(entry.root, REXRAY_MOUNT_PREFIX)) {
+	      continue; // not a mount created by this isolator
+	    }
+	    bool dirInUse = false;
+
+	    foreach (const Info& info, infos) {
+		  if (entry.root == info.mountrootpath) {
+		    dirInUse = true;
+	        break; // a known container is associated with this mount
+	      }
+	    }
+	    if (dirInUse) {
+	    	continue;
+	    }
+	    unknownOrphans.insert(entry.root);
 
   return Nothing();
 }

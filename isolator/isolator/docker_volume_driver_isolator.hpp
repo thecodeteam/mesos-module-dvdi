@@ -50,7 +50,7 @@ public:
 	// slaves when it restarts
 	// TODO This interface will change post 0.23.0 to pass a list of
 	// of container states which will assist in recovery,
-	// when this is available, code should use it
+	// when this is available, code should use it.
     // TBD how determine volume mounts and device mounts
     //   rexray can report volume and device mount but
     //   unclear whether volume or device mount is related to mesos or not
@@ -58,7 +58,8 @@ public:
 	virtual process::Future<Nothing> recover(
 	      const std::list<mesos::slave::ExecutorRunState>& states,
 	      const hashset<ContainerID>& orphans);
-// CALL THIS DOCKER VOLUME DRIVER ISOLATOR
+
+	// CALL THIS DOCKER VOLUME DRIVER ISOLATOR
 	// Prepare runs BEFORE a task is started
 	// will check if the volume is already mounted and if not,
 	// will mount the volume
@@ -126,9 +127,8 @@ public:
 	// 1. Decrement use count
 	//    TBD, may be more complex list of use by Task ID
 	// 2. Unmount the volume
-	//     rdvdcli unmount
+	//     dvdcli unmount
 	//       should be synchronous call and check for success
-
 	virtual process::Future<Nothing> cleanup(
 	      const ContainerID& containerId);
 
