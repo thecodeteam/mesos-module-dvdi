@@ -17,6 +17,17 @@
  * limitations under the License.
  */
 
+// TODO Code Complete, but untested
+// process() should be used instead of system(), but desire for synchronous dvdcli mount/unmount
+// could make this complex.
+// Currently only handles one mount per container, infos structure and logic will need enhancement
+// to handle (n) mounts per containerized task.
+// The recover() function only provides ContainerId  and not the original environment which contains
+// the mounted volume name. This is problematic. Currently assumes that mount path has been placed in
+// the executor work directory, which I am speculating is confurable as a work-around.
+// If the executor work directory is not set to the dvdcli mount path, then recover won't clean up
+// orphaned mounts, but it should do no harm.
+
 #include "docker_volume_driver_isolator.hpp"
 
 #include <list>
@@ -174,41 +185,7 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
 // Prepare runs BEFORE a task is started
 // will check if the volume is already mounted and if not,
 // will mount the volume
-//
-// 1. verify rexray is installed
-//    make rexray get-instance call to do this
-//      will get slave's instance id (MYINST)
-//      will get provider id (PROV)
-//     TBD: multiple providers = multiple Rexray's, how will this work?
-// 2. get desired volume drive (volumedriver=) from ENVIRONMENT from task in ExecutorInfo
 
-
-// 3. get volume identifier (from ENVIRONMENT from task in ExecutorInfo VOLID
-//      TBD: Is this volume id or name? answer name
-
-// 4. make dvdcli mount call <volumename>
-//    mount location is fixed, based on volume name (/var/lib/rexray/volumes/
-//    this call is synchrounous, and return 0 if success
-// 5. bump ref count for volumename
-
-
-// 6. make rexray call to verify that (rexray get-volume --volumename=VOLID?)
-//      - volume exists?
-//      - whether device(volume) is already attached somewhere
-//         TBD: if mounted to another host, should this cause an error?
-//      - whether device is already attached on this slave host
-// 7. IF volume not mounted on this host(slave?
-//      a. make rexray call to attach device
-//          rexray attach-volume --instanceid=<> --volumeid=<>
-//          call should be synchronous and check for success
-//      b. make rexray call to mount volume
-//          rexray mount-volume
-//          bump use_count for device /
-//            TBD, would a more complex structure listing actual task ids be better?
-//          call should be synchronous and verify success
-//    ELSE (volume was already mounted)
-//      a. bump use count for device
-//
 Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
     const ContainerID& containerId,
     const ExecutorInfo& executorInfo,
@@ -216,7 +193,8 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
 	const Option<string>& rootfs,
     const Option<string>& user)
 {
-// TODO remove this temporary code to show we invoked isolator prepare ny touching a file in /tmp
+// TODO remove this temporary code to show we invoked isolator prepare by touching a file in /tmp
+// This is here now as a diagnostic to prove the module is installed and registered
   if (system(NULL)) { // Is a command processor available?
     int i = system("touch /tmp/DockerVolumeDriverIsolatorProcess-prepare-called.txt");
     if( 0 != i ) {
@@ -272,143 +250,29 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
       LOG(WARNING) << "No " << REXRAY_MOUNT_VOL_ENVIRONMENT_VAR_NAME << " environment variable specified for container ";
   }
 
-  if (system(NULL)) { // Is a command processor available?
-	std::string cmd = REXRAY_DVDCLI_MOUNT_CMD + volumeName;
-    int i = system(cmd.c_str());
-    if( 0 != i ) {
-        return Failure("Failed to execute mount command " + cmd );
+  // we have a volume name, now check if we are the first task to request a mount
+  const std::string fullpath = REXRAY_MOUNT_PREFIX + volumeName;
+  bool mountInUse = false;
+
+  foreach (const Info& info, infos) {
+	  if (fullpath == info.mountrootpath) {
+	    mountInUse = true;
+      break; // a known container is associated with this mount,
+    }
+  }
+  if (!mountInUse) {
+    if (system(NULL)) { // Is a command processor available?
+	  std::string cmd = REXRAY_DVDCLI_MOUNT_CMD + volumeName;
+      int i = system(cmd.c_str());
+      if( 0 != i ) {
+        return Failure("prepare() failed to execute mount command " + cmd );
+      }
     }
   }
 
-  infos.insert(containerId,  )
+  infos.put(containerId, Owned<Info>(new Info(fullpath)));
+  return Nothing();
 
-  // We don't support mounting to a container path which is a parent
-  // to another container path as this can mask entries. We'll keep
-  // track of all container paths so we can check this.
-  set<string> containerPaths;
-  containerPaths.insert(directory);
-
-  list<string> commands;
-
-  foreach (const Volume& volume, executorInfo.container().volumes()) {
-    // Because the filesystem is shared we require the container path
-    // already exist, otherwise containers can create arbitrary paths
-    // outside their sandbox.
-    if (!os::exists(volume.container_path())) {
-      return Failure("Volume with container path '" +
-                     volume.container_path() +
-                     "' must exist on host for shared filesystem isolator");
-    }
-
-    // Host path must be provided.
-    if (!volume.has_host_path()) {
-      return Failure("Volume with container path '" +
-                     volume.container_path() +
-                     "' must specify host path for shared filesystem isolator");
-    }
-
-    // Check we won't mask another volume.
-    // NOTE: Assuming here that the container path is absolute, see
-    // Volume protobuf.
-    foreach (const string& containerPath, containerPaths) {
-      if (strings::startsWith(volume.container_path(), containerPath)) {
-        return Failure("Cannot mount volume to '" +
-                        volume.container_path() +
-                        "' because it is under volume '" +
-                        containerPath +
-                        "'");
-      }
-
-      if (strings::startsWith(containerPath, volume.container_path())) {
-        return Failure("Cannot mount volume to '" +
-                        containerPath +
-                        "' because it is under volume '" +
-                        volume.container_path() +
-                        "'");
-      }
-    }
-    containerPaths.insert(volume.container_path());
-
-    // A relative host path will be created in the container's work
-    // directory, otherwise check it already exists.
-    string hostPath;
-    if (!strings::startsWith(volume.host_path(), "/")) {
-      hostPath = path::join(directory, volume.host_path());
-
-      // Do not support any relative components in the resulting path.
-      // There should not be any links in the work directory to
-      // resolve.
-      if (strings::contains(hostPath, "/./") ||
-          strings::contains(hostPath, "/../")) {
-        return Failure("Relative host path '" +
-                       hostPath +
-                       "' cannot contain relative components");
-      }
-
-      if (system(NULL)) { // Is a command processor available?
-    	std::string = REXRAY_DVDCLI_MOUNT_CMD +
-        int i = system("/go/src/github.com/clintonskitson/dvdcli/dvdcli path --volumedriver=rexray --volumename=test");
-        if( 0 != i ) {
-          LOG(WARNING) << "touch command failed";
-        }
-      }
-
-      Try<Nothing> mkdir = os::mkdir(hostPath, true);
-      if (mkdir.isError()) {
-        return Failure("Failed to create host_path '" +
-                        hostPath +
-                        "' for mount to '" +
-                        volume.container_path() +
-                        "': " +
-                        mkdir.error());
-      }
-
-      // Set the ownership and permissions to match the container path
-      // as these are inherited from host path on bind mount.
-      struct stat stat;
-      if (::stat(volume.container_path().c_str(), &stat) < 0) {
-        return Failure("Failed to get permissions on '" +
-                        volume.container_path() + "'" +
-                        ": " + strerror(errno));
-      }
-
-      Try<Nothing> chmod = os::chmod(hostPath, stat.st_mode);
-      if (chmod.isError()) {
-        return Failure("Failed to chmod hostPath '" +
-                       hostPath +
-                       "': " +
-                       chmod.error());
-      }
-
-      Try<Nothing> chown = os::chown(stat.st_uid, stat.st_gid, hostPath, false);
-      if (chown.isError()) {
-        return Failure("Failed to chown hostPath '" +
-                       hostPath +
-                       "': " +
-                       chown.error());
-      }
-    } else {
-      hostPath = volume.host_path();
-
-      if (!os::exists(hostPath)) {
-        return Failure("Volume with container path '" +
-                      volume.container_path() +
-                      "' must have host path '" +
-                      hostPath +
-                      "' present on host for shared filesystem isolator");
-      }
-    }
-
-    commands.push_back("mount -n --bind " +
-                       hostPath +
-                       " " +
-                       volume.container_path());
-  }
-
-  CommandInfo command;
-  command.set_value(strings::join(" && ", commands));
-
-  return command;
 }
 
 Future<Limitation> DockerVolumeDriverIsolatorProcess::watch(
