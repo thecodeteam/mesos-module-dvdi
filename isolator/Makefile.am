@@ -1,42 +1,18 @@
-# This file is © 2014 Mesosphere, Inc. (“Mesosphere”). Mesosphere
-# licenses this file to you solely pursuant to the following terms
-# (and you may not use this file except in compliance with such
-# terms):
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
 #
-# 1) Subject to your compliance with the following terms, Mesosphere
-# hereby grants you a nonexclusive, limited, personal,
-# non-sublicensable, non-transferable, royalty-free license to use
-# this file solely for your internal business purposes.
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
-# 2) You may not (and agree not to, and not to authorize or enable
-# others to), directly or indirectly:
-#   (a) copy, distribute, rent, lease, timeshare, operate a service
-#   bureau, or otherwise use for the benefit of a third party, this
-#   file; or
-#
-#   (b) remove any proprietary notices from this file.  Except as
-#   expressly set forth herein, as between you and Mesosphere,
-#   Mesosphere retains all right, title and interest in and to this
-#   file.
-#
-# 3) Unless required by applicable law or otherwise agreed to in
-# writing, Mesosphere provides this file on an "AS IS" BASIS, WITHOUT
-# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied,
-# including, without limitation, any warranties or conditions of
-# TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
-# PARTICULAR PURPOSE.
-#
-# 4) In no event and under no legal theory, whether in tort (including
-# negligence), contract, or otherwise, unless required by applicable
-# law (such as deliberate and grossly negligent acts) or agreed to in
-# writing, shall Mesosphere be liable to you for damages, including
-# any direct, indirect, special, incidental, or consequential damages
-# of any character arising as a result of these terms or out of the
-# use or inability to use this file (including but not limited to
-# damages for loss of goodwill, work stoppage, computer failure or
-# malfunction, or any and all other commercial damages or losses),
-# even if Mesosphere has been advised of the possibility of such
-# damages.
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 AUTOMAKE_OPTIONS = subdir-objects
 ACLOCAL_AMFLAGS = -I m4
@@ -73,5 +49,5 @@ CLEANFILES += $(CXX_PROTOS)
 
 # Library containing kerberos ticket forwarding module.
 pkglib_LTLIBRARIES += libmesos_dvdi_isolator.la
-libmesos_dvdi_isolator_la_SOURCES = isolator/network_isolator.cpp ${CXX_PROTOS}
+libmesos_dvdi_isolator_la_SOURCES = isolator/dvdi.cpp ${CXX_PROTOS}
 libmesos_dvdi_isolator_la_LDFLAGS = -release $(PACKAGE_VERSION) -shared $(MESOS_LDFLAGS)
