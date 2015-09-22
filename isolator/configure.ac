@@ -61,6 +61,12 @@ else
 
     # Add stout to include path.
     MESOS_INCLUDE_PATH="${MESOS_INCLUDE_PATH} -I${mesos_root}/3rdparty/libprocess/3rdparty/stout/include"
+
+    # Add src to include path
+    MESOS_INCLUDE_PATH="${MESOS_INCLUDE_PATH} -I${mesos_root}/src"
+
+    # Add build/src to include path
+    MESOS_INCLUDE_PATH="${MESOS_INCLUDE_PATH} -I${mesos_root}/build/src"
   else
     AC_MSG_ERROR([Invalid mesos path; use --with-mesos-root=<DIR>
                   <DIR> is the top-level directory of the Mesos distribution.])
