@@ -1,4 +1,4 @@
-AC_INIT([dvdi-modules],[0.1])
+AC_INIT([dvdi-modules],[0.23.0])
 AC_PREREQ([2.69])
 AC_CONFIG_FILES([Makefile])
 AC_LANG([C++])

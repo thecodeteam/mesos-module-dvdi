@@ -19,7 +19,7 @@
 
 #ifndef SRC_DOCKER_VOLUME_DRIVER_ISOLATOR_HPP_
 #define SRC_DOCKER_VOLUME_DRIVER_ISOLATOR_HPP_
-
+#include <mesos/mesos.hpp>
 #include <mesos/slave/isolator.hpp>
 #include <slave/flags.hpp>
 #include <process/future.hpp>
@@ -31,12 +31,11 @@
 #include <stout/try.hpp>
 
 namespace mesos {
-namespace internal {
 namespace slave {
 
 class DockerVolumeDriverIsolatorProcess: public mesos::slave::IsolatorProcess {
 public:
-	static Try<mesos::slave::Isolator*> create(const mesos::internal::slave::Flags& flags);
+	static Try<mesos::slave::Isolator*> create(const Parameters& parameters);
 
 	virtual ~DockerVolumeDriverIsolatorProcess();
 
@@ -110,9 +109,9 @@ public:
 	      const ContainerID& containerId);
 
 private:
-  DockerVolumeDriverIsolatorProcess(const Flags& flags);
+  DockerVolumeDriverIsolatorProcess(const Parameters& parameters);
 
-  const Flags flags;
+  const Parameters parameters;
 
   struct Info
   {
@@ -132,7 +131,6 @@ private:
 };
 
 } /* namespace slave */
-} /* namespace internal */
 } /* namespace mesos */
 
 #endif /* SRC_DOCKER_VOLUME_DRIVER_ISOLATOR_HPP_ */

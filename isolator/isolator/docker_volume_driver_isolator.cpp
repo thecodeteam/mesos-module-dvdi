@@ -27,7 +27,10 @@
 // the executor work directory, which I am speculating is confurable as a work-around.
 // If the executor work directory is not set to the dvdcli mount path, then recover won't clean up
 // orphaned mounts, but it should do no harm.infos
-
+#include <mesos/mesos.hpp>
+#include <mesos/module.hpp>
+#include <mesos/module/isolator.hpp>
+#include <mesos/slave/isolator.hpp>
 #include "docker_volume_driver_isolator.hpp"
 
 #include <glog/logging.h>
@@ -46,9 +49,8 @@ using std::list;
 using std::set;
 using std::string;
 
-namespace mesos {
-namespace internal {
-namespace slave {
+using namespace mesos;
+using namespace slave;
 
 using mesos::slave::ExecutorRunState;
 using mesos::slave::Isolator;
@@ -56,10 +58,10 @@ using mesos::slave::IsolatorProcess;
 using mesos::slave::Limitation;
 
 DockerVolumeDriverIsolatorProcess::DockerVolumeDriverIsolatorProcess(
-    const Flags& _flags)
-  : flags(_flags) {}
+	const Parameters& _parameters)
+  : parameters(_parameters) {}
 
-Try<Isolator*> DockerVolumeDriverIsolatorProcess::create(const Flags& flags)
+Try<Isolator*> DockerVolumeDriverIsolatorProcess::create(const Parameters& parameters)
 {
   Result<string> user = os::user();
   if (!user.isSome()) {
@@ -72,7 +74,7 @@ Try<Isolator*> DockerVolumeDriverIsolatorProcess::create(const Flags& flags)
   }
 
   process::Owned<IsolatorProcess> process(
-      new DockerVolumeDriverIsolatorProcess(flags));
+      new DockerVolumeDriverIsolatorProcess(parameters));
 
   return new Isolator(process);
 }
@@ -107,7 +109,7 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
   // to device mountpoints.
   // Method 'cleanup()' relies on this information to clean
   // up mounts in the host mounts for each container.
-  Try<fs::MountInfoTable> table = fs::MountInfoTable::read();
+  Try<mesos::internal::fs::MountInfoTable> table = mesos::internal::fs::MountInfoTable::read();
   if (table.isError()) {
     return Failure("Failed to get mount table: " + table.error());
   }
@@ -125,7 +127,7 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
   // Mounts from known orphans will be re-inserted into the infos hashmap
   set<std::string> unknownOrphans;
 
-  foreach (const fs::MountInfoTable::Entry& entry, table.get().entries) {
+  foreach (const mesos::internal::fs::MountInfoTable::Entry& entry, table.get().entries) {
     if (!strings::startsWith(entry.root, REXRAY_MOUNT_PREFIX)) {
       continue; // not a mount created by this isolator
     }
@@ -337,6 +339,25 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::cleanup(
 
 }
 
-} /* namespace slave */
-} /* namespace internal */
-} /* namespace mesos */
+static Isolator* createDockerVolumeDriverIsolator(const Parameters& parameters)
+{
+  LOG(INFO) << "Loading Docker Volume Driver Isolator module";
+
+  Try<Isolator*> result = DockerVolumeDriverIsolatorProcess::create(parameters);
+
+  if (result.isError()) {
+    return NULL;
+  }
+
+  return result.get();
+}
+
+// Declares the isolator named
+mesos::modules::Module<Isolator> com_emc_mesos_DockerVolumeDriverIsolator(
+    MESOS_MODULE_API_VERSION,
+    MESOS_VERSION,
+    "emc{code}",
+    "emccode@emc.com",
+    "Docker Volume Driver Isolator module.",
+    NULL,
+	createDockerVolumeDriverIsolator);
