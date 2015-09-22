@@ -49,5 +49,5 @@ CLEANFILES += $(CXX_PROTOS)
 
 # Library containing kerberos ticket forwarding module.
 pkglib_LTLIBRARIES += libmesos_dvdi_isolator.la
-libmesos_dvdi_isolator_la_SOURCES = isolator/dvdi.cpp ${CXX_PROTOS}
+libmesos_dvdi_isolator_la_SOURCES = isolator/docker_volume_driver_isolator.cpp ${CXX_PROTOS}
 libmesos_dvdi_isolator_la_LDFLAGS = -release $(PACKAGE_VERSION) -shared $(MESOS_LDFLAGS)

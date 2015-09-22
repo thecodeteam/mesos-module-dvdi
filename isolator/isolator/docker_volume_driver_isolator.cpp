@@ -26,22 +26,19 @@
 // the mounted volume name. This is problematic. Currently assumes that mount path has been placed in
 // the executor work directory, which I am speculating is confurable as a work-around.
 // If the executor work directory is not set to the dvdcli mount path, then recover won't clean up
-// orphaned mounts, but it should do no harm.
+// orphaned mounts, but it should do no harm.infos
 
 #include "docker_volume_driver_isolator.hpp"
 
-#include <list>
 #include <glog/logging.h>
 #include <mesos/type_utils.hpp>
 
 #include <process/process.hpp>
 #include <process/subprocess.hpp>
 
-#include "common/protobuf_utils.hpp"
-
-
 #include "linux/fs.hpp"
-#include <boost/foreach.hpp>
+
+#include <stout/foreach.hpp>
 
 using namespace process;
 
@@ -62,8 +59,6 @@ DockerVolumeDriverIsolatorProcess::DockerVolumeDriverIsolatorProcess(
     const Flags& _flags)
   : flags(_flags) {}
 
-DockerVolumeDriverIsolatorProcess::~DockerVolumeDriverIsolatorProcess() {}
-
 Try<Isolator*> DockerVolumeDriverIsolatorProcess::create(const Flags& flags)
 {
   Result<string> user = os::user();
@@ -82,20 +77,7 @@ Try<Isolator*> DockerVolumeDriverIsolatorProcess::create(const Flags& flags)
   return new Isolator(process);
 }
 
-process::Future<Option<int>> DockerVolumeDriverIsolatorProcess::namespaces()
-{
-  return CLONE_NEWNS;
-}
-
-
-Future<Nothing> SharedFilesystemIsolatorProcess::recover(
-    const list<ExecutorRunState>& states,
-    const hashset<ContainerID>& orphans)
-{
-  // There is nothing to recover because we do not keep any state and
-  // do not monitor filesystem usage or perform any action on cleanup.
-  return Nothing();
-}
+DockerVolumeDriverIsolatorProcess::~DockerVolumeDriverIsolatorProcess() {}
 
 Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
     const list<ExecutorRunState>& states,
@@ -133,15 +115,14 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
   hashset<std::string> inUseDirs;
 
   foreach (const ExecutorRunState& state, states) {
-    Owned<Info> info(new Info(state.directory()));
+
+    infos.put(state.id, Owned<Info>(new Info(state.directory)));
     inUseDirs.insert(state.directory) ;
-    infos.put(state.id, info);
   }
   // infos now has a root mount directory for every task now running
 
-  //  Mounts from unknown orphans will be cleaned up now.
-  // Mounts from known orphans will be cleaned up when
-  // those known orphan containers are being destroyed by the slave.
+  // Mounts from unknown orphans will be cleaned up now.
+  // Mounts from known orphans will be re-inserted into the infos hashmap
   set<std::string> unknownOrphans;
 
   foreach (const fs::MountInfoTable::Entry& entry, table.get().entries) {
@@ -150,9 +131,9 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
     }
     bool dirInUse = false;
 
-    foreach (const Info& info, infos) {
-	  if (entry.root == info.mountrootpath) {
-	    dirInUse = true;
+    for(auto const ent : infos) {
+      if (ent.second->mountrootpath == entry.root) {
+   	    dirInUse = true;
         break; // a known container is associated with this mount,
       }
     }
@@ -222,13 +203,14 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
   JSON::Array jsonVariables;
 
   // We may want to use the directory to indicate volumeName even though
-  // initial plan was environment variable. For now code will take either
+  // initial plan was environment variable. For now code will use environment
 
   // get things we need from task's environment in ExecutoInfo
   if (!executorInfo.command().has_environment()) {
 	   // No environment means no external volume specification
 	  // not an error, just nothing to do so return None.
-	  // return None();
+      LOG(INFO) << "No environment specified for container ";
+	  return None();
   }
 
   // iterate through the environment variables,
@@ -254,12 +236,13 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
   const std::string fullpath = REXRAY_MOUNT_PREFIX + volumeName;
   bool mountInUse = false;
 
-  foreach (const Info& info, infos) {
-	  if (fullpath == info.mountrootpath) {
-	    mountInUse = true;
-      break; // a known container is associated with this mount,
+  for(auto const ent : infos) {
+    if (ent.second->mountrootpath == fullpath) {
+      mountInUse = true;
+      break; // another container is already associated with this mount,
     }
   }
+
   if (!mountInUse) {
     if (system(NULL)) { // Is a command processor available?
 	  std::string cmd = REXRAY_DVDCLI_MOUNT_CMD + volumeName;
@@ -271,7 +254,7 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
   }
 
   infos.put(containerId, Owned<Info>(new Info(fullpath)));
-  return Nothing();
+  return None();
 
 }
 
@@ -306,50 +289,53 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::cleanup(
     const ContainerID& containerId)
 {
   if (!infos.contains(containerId)) {
-	  return Nothing();
-  }
-  const Owned<Info>& info = infos[containerId];
-
-  if (info->mountrootpath.length() <= REXRAY_MOUNT_PREFIX.length()) {
-	  // too small to include a valid rexray mount
-	  return Nothing();
+    return Nothing();
   }
 
-  if (!strings::startsWith(info->mountrootpath, REXRAY_MOUNT_PREFIX)) {
-       continue; // not a mount created by this isolator
+  string mountToRelease(infos[containerId]->mountrootpath);
+
+  if (mountToRelease.length() <= REXRAY_MOUNT_PREFIX.length()) {
+    // too small to include a valid rexray mount
+    return Nothing();
   }
 
-  const std::string mountToRelease = info->mountrootpath;
+  if (!strings::startsWith(mountToRelease, REXRAY_MOUNT_PREFIX)) {
+    // too small to include a valid rexray mount
+    return Nothing();
+  }
+
   // we have now confirmed that this is a docker volume driver mount
   // next check if we are the last and only task using this mount
-  for (std::map<ContainerID, process::Owned<Info>>::iterator ii=infos.begin(); ii!=infos.end(); ++ii) {
-	  if ((*ii).first == containerId) {
-		  // this is the entry for the task beiong cleaned up
-		  continue;
-	  }
-	  if (mountToRelease == (*ii).second->mountrootpath) {
-		  // another task is using this mount
-		  // remove our use indication, but leave mount in place
-		  infos.erase(containerId);
-		  return Nothing();
-	  }
-  }
-
-  const std::string volumeName = info->mountrootpath.substr(REXRAY_MOUNT_PREFIX.length());
-
-  if (system(NULL)) { // Is a command processor available?
-	std::string cmd = REXRAY_DVDCLI_UNMOUNT_CMD + volumeName;
-    int i = system(cmd.c_str());
-    if( 0 != i ) {
-        return Failure("Failed to execute unmount command " + cmd );
+  // note: we should always find our own mount as we iterate
+  int mountcount = 0;
+  for(auto const ent : infos) {
+    if (ent.second->mountrootpath == mountToRelease) {
+      if( ++mountcount > 1) {
+     	  break; // as soon as we find two users we can quit
+      }
     }
   }
 
+  if (mountcount == 1) {
+    // we were the only or last user of the mount
+	  const std::string volumeName = mountToRelease.substr(REXRAY_MOUNT_PREFIX.length());
+
+	  if (system(NULL)) { // Is a command processor available?
+		std::string cmd = REXRAY_DVDCLI_UNMOUNT_CMD + volumeName;
+	    int i = system(cmd.c_str());
+	    if( 0 != i ) {
+	        return Failure("Failed to execute unmount command " + cmd );
+	    }
+	  }
+  }
+
+  // For a normally exited container, we take its info pointer off the
+  // hashmap infos before using the helper function to clean it up.
   infos.erase(containerId);
 
   return Nothing();
-}
 
+}
 
 } /* namespace slave */
 } /* namespace internal */

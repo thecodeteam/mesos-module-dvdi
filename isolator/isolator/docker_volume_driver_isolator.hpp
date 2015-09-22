@@ -21,16 +21,14 @@
 #define SRC_DOCKER_VOLUME_DRIVER_ISOLATOR_HPP_
 
 #include <mesos/slave/isolator.hpp>
-
-#include "slave/flags.hpp"
-
+#include <slave/flags.hpp>
 #include <process/future.hpp>
 #include <process/owned.hpp>
 #include <process/process.hpp>
 
+#include <stout/hashmap.hpp>
+#include <stout/protobuf.hpp>
 #include <stout/try.hpp>
-#include <stout/option.hpp>
-
 
 namespace mesos {
 namespace internal {
@@ -40,9 +38,7 @@ class DockerVolumeDriverIsolatorProcess: public mesos::slave::IsolatorProcess {
 public:
 	static Try<mesos::slave::Isolator*> create(const mesos::internal::slave::Flags& flags);
 
-	virtual ~DockerVolumeDriverIsolatorProcess() {}
-
-    virtual process::Future<Option<int>> namespaces();
+	virtual ~DockerVolumeDriverIsolatorProcess();
 
 	// Slave recovery is a feature of Mesos that allows task/executors
 	// to keep running if a slave process goes down, AND
@@ -53,51 +49,31 @@ public:
 	// when this is available, code should use it.
     // TBD how determine volume mounts and device mounts
     //   rexray can report volume and device mount but
-    //   unclear whether volume or device mount is related to mesos or not
-    //   persistent store of volume mounts by task id may be needed
+    //   unclear whether volume or device mount is related to mesos or not.
 	virtual process::Future<Nothing> recover(
 	      const std::list<mesos::slave::ExecutorRunState>& states,
 	      const hashset<ContainerID>& orphans);
 
-	// CALL THIS DOCKER VOLUME DRIVER ISOLATOR
 	// Prepare runs BEFORE a task is started
 	// will check if the volume is already mounted and if not,
 	// will mount the volume
+    //
+	// FUTURE. get desired volume driver (volumedriver=) from ENVIRONMENT from task in ExecutorInfo
+	//     REXRAY_MOUNT_VOL_ENVIRONMENT_VAR_NAME is defined below
+    //
+	// 1. get volume identifier (from ENVIRONMENT from task in ExecutorInfo VOLID
+	//     REXRAY_MOUNT_VOL_ENVIRONMENT_VAR_NAME is defined below
+    //     This is volume name, not ID.
+	//     Warning, name collisions on name can be trecherous.
+	//     For now a simple string value is presumed, will need to enhance to
+	//     support a JSON array to allow multiple volume mounts per task.
 	//
-    // 1. verify rexray is installed
-	//    make rexray get-instance call to do this
-	//      will get slave's instance id (MYINST)
-	//      will get provider id (PROV)
-	//     TBD: multiple providers = multiple Rexray's, how will this work?
-	// 2. get desired volume drive (volumedriver=) from ENVIRONMENT from task in ExecutorInfo
-
-
-	// 3. get volume identifier (from ENVIRONMENT from task in ExecutorInfo VOLID
-	//      TBD: Is this volume id or name? answer name
-
-	// 4. make dvdcli mount call <volumename>
-	//    mount location is fixed, based on volume name (/ver/lib/rexray/volumes/
+	// 2. Check for other pre-existing users of the mount.
+	// 3. Only if we are first user, make dvdcli mount call <volumename>
+	//    Mount location is fixed, based on volume name (/ver/lib/rexray/volumes/
 	//    this call is synchrounous, and return 0 if success
-	// 5. bump ref count for volumename
-
-
-	// 6. make rexray call to verify that (rexray get-volume --volumename=VOLID?)
-	//      - volume exists?
-	//      - whether device(volume) is already attached somewhere
-	//         TBD: if mounted to another host, should this cause an error?
-	//      - whether device is already attached on this slave host
-	// 7. IF volume not mounted on this host(slave?
-	//      a. make rexray call to attach device
-	//          rexray attach-volume --instanceid=<> --volumeid=<>
-	//          call should be synchronous and check for success
-	//      b. make rexray call to mount volume
-	//          rexray mount-volume
-	//          bump use_count for device /
-	//            TBD, would a more complex structure listing actual task ids be better?
-	//          call should be synchronous and verify success
-	//    ELSE (volume was already mounted)
-	//      a. bump use count for device
-	//
+	//    actual call is defined below in REXRAY_DVDCLI_MOUNT_CMD
+	// 4. Add entry to hashmap that contains root mountpath indexed by ContainerId
 	virtual process::Future<Option<CommandInfo>> prepare(
 	      const ContainerID& containerId,
 	      const ExecutorInfo& executorInfo,
@@ -110,7 +86,7 @@ public:
 	      const ContainerID& containerId,
 	      pid_t pid);
 
-	// no-op
+	// no-op, mount occurs at prepare
 	virtual process::Future<mesos::slave::Limitation> watch(
 	     const ContainerID& containerId);
 
@@ -123,12 +99,13 @@ public:
 	virtual process::Future<ResourceStatistics> usage(
 	      const ContainerID& containerId);
 
-	// will call unmount here
-	// 1. Decrement use count
-	//    TBD, may be more complex list of use by Task ID
-	// 2. Unmount the volume
-	//     dvdcli unmount
-	//       should be synchronous call and check for success
+	// will (possibly) unmount here
+	// 1. Get mount root path by looking up based on ContainerId
+	// 2. Verify that it is a rexray mount.
+	// 3. Start counting tasks using this same mount. Quit counted after count == 2
+	// 4. If count was exactly 1, Unmount the volume
+	//     dvdcli unmount defined in REXRAY_DVDCLI_UNMOUNT_CMD below
+	// 5. Remove the listing for this task's mount from hashmap
 	virtual process::Future<Nothing> cleanup(
 	      const ContainerID& containerId);
 
@@ -139,6 +116,9 @@ private:
 
   struct Info
   {
+	  explicit Info(const std::string& _mountrootpath)
+	 : mountrootpath(_mountrootpath) {}
+
 	// We save the full root path of any mounted device here.
     const std::string mountrootpath;
   };
@@ -148,7 +128,7 @@ private:
   const std::string REXRAY_MOUNT_PREFIX = "/var/lib/rexray/volumes/";
   const std::string REXRAY_DVDCLI_MOUNT_CMD = "go/src/github.com/clintonskitson/dvdcli/dvdcli mount --volumedriver=rexray --volumename=";
   const std::string REXRAY_DVDCLI_UNMOUNT_CMD = "go/src/github.com/clintonskitson/dvdcli/dvdcli unmount --volumedriver=rexray --volumename=";
-  const std::string REXRAY_MOUNT_VOL_ENVIRONMENT_VAR_NAME = "/var/lib/rexray/volumes/";
+  const std::string REXRAY_MOUNT_VOL_ENVIRONMENT_VAR_NAME = "DVDI_VOLUME_NAME";
 };
 
 } /* namespace slave */
