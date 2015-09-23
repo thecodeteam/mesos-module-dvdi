@@ -286,6 +286,13 @@ Future<ResourceStatistics> DockerVolumeDriverIsolatorProcess::usage(
   return ResourceStatistics();
 }
 
+process::Future<Nothing> DockerVolumeDriverIsolatorProcess::isolate(
+    const ContainerID& containerId,
+    pid_t pid)
+{
+  // No-op, isolation happens when mounting/unmounting in prepare/cleanup
+  return Nothing();
+}
 
 Future<Nothing> DockerVolumeDriverIsolatorProcess::cleanup(
     const ContainerID& containerId)
