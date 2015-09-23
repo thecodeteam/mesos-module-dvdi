@@ -176,29 +176,8 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
 	const Option<string>& rootfs,
     const Option<string>& user)
 {
-// TODO remove this temporary code to show we invoked isolator prepare by touching a file in /tmp
-// This is here now as a diagnostic to prove the module is installed and registered
-  if (system(NULL)) { // Is a command processor available?
-    int i = system("touch /tmp/DockerVolumeDriverIsolatorProcess-prepare-called.txt");
-    if( 0 != i ) {
-      LOG(WARNING) << "touch command failed in DockerVolumeDriverIsolatorProcesss";
-    }
-  }
-
-  if (executorInfo.has_container() &&
-      executorInfo.container().type() != ContainerInfo::MESOS) {
-    return Failure("Can only prepare external storage for a MESOS container");
-  }
-
   LOG(INFO) << "Preparing external storage for container: "
             << stringify(containerId);
-
-  if (!executorInfo.has_container()) {
-    // We don't consider this an error, there's just nothing to do so
-    // we return None.
-
-    return None();
-  }
 
   std::string volumeName;
   JSON::Object environment;
