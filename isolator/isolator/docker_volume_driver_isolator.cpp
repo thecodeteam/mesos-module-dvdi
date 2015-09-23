@@ -43,6 +43,8 @@
 
 #include <stout/foreach.hpp>
 
+#include <sstream>
+
 using namespace process;
 
 using std::list;
@@ -165,6 +167,14 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
   return Nothing();
 }
 
+process::Future<Nothing> DockerVolumeDriverIsolatorProcess::isolate(
+   const ContainerID& containerId,
+   pid_t pid)
+{
+ // No-op, isolation happens when mounting/unmounting in prepare/cleanup
+ return Nothing();
+}
+
 // Prepare runs BEFORE a task is started
 // will check if the volume is already mounted and if not,
 // will mount the volume
@@ -193,14 +203,15 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
   LOG(INFO) << "Preparing external storage for container: "
             << stringify(containerId);
 
-  if (!executorInfo.has_container()) {
+  //if (!executorInfo.has_container()) {
     // We don't consider this an error, there's just nothing to do so
     // we return None.
 
-    return None();
-  }
+    //return None();
+  //}
 
   std::string volumeName;
+  std::string volumeOpts;
   JSON::Object environment;
   JSON::Array jsonVariables;
 
@@ -227,11 +238,25 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
       if (variable.name() == REXRAY_MOUNT_VOL_ENVIRONMENT_VAR_NAME) {
     	  volumeName = variable.value();
       }
+
+      if (variable.name() == VOL_OPTS_VAR_NAME) {
+	  volumeOpts = variable.value();
+      }
   }
   environment.values["variables"] = jsonVariables;
 
   if (volumeName.empty()) {
       LOG(WARNING) << "No " << REXRAY_MOUNT_VOL_ENVIRONMENT_VAR_NAME << " environment variable specified for container ";
+  }
+
+  std::stringstream ss(volumeOpts);
+  std::string opts;
+
+  while( ss.good() )
+  {
+      string substr;
+      getline( ss, substr, ',' );
+      opts = opts + " --volumeopts=" + substr;
   }
 
   // we have a volume name, now check if we are the first task to request a mount
@@ -247,7 +272,7 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
 
   if (!mountInUse) {
     if (system(NULL)) { // Is a command processor available?
-	  std::string cmd = REXRAY_DVDCLI_MOUNT_CMD + volumeName;
+	  std::string cmd = REXRAY_DVDCLI_MOUNT_CMD + volumeName + " " + opts;
       int i = system(cmd.c_str());
       if( 0 != i ) {
         return Failure("prepare() failed to execute mount command " + cmd );

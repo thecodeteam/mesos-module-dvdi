@@ -1,0 +1,18 @@
+{
+  "libraries": [
+    {
+      "file": "/home/ubuntu/docker-volume-driver-isolator/isolator/build/.libs/libmesos_dvdi_isolator.so",
+      "modules": [
+        {
+          "name": "com_emc_mesos_DockerVolumeDriverIsolator",
+          "parameters": [
+            {
+              "key": "isolator_command",
+              "value": "/emc/dvdi_isolator"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

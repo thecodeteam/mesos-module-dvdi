@@ -125,9 +125,10 @@ private:
   hashmap<ContainerID, process::Owned<Info>> infos;
 
   const std::string REXRAY_MOUNT_PREFIX = "/var/lib/rexray/volumes/";
-  const std::string REXRAY_DVDCLI_MOUNT_CMD = "go/src/github.com/clintonskitson/dvdcli/dvdcli mount --volumedriver=rexray --volumename=";
-  const std::string REXRAY_DVDCLI_UNMOUNT_CMD = "go/src/github.com/clintonskitson/dvdcli/dvdcli unmount --volumedriver=rexray --volumename=";
+  const std::string REXRAY_DVDCLI_MOUNT_CMD = "/go/src/github.com/clintonskitson/dvdcli/dvdcli mount --volumedriver=rexray --volumename=";
+  const std::string REXRAY_DVDCLI_UNMOUNT_CMD = "/go/src/github.com/clintonskitson/dvdcli/dvdcli unmount --volumedriver=rexray --volumename=";
   const std::string REXRAY_MOUNT_VOL_ENVIRONMENT_VAR_NAME = "DVDI_VOLUME_NAME";
+  const std::string VOL_OPTS_VAR_NAME = "DVDI_VOLUME_OPTS";
 };
 
 } /* namespace slave */
