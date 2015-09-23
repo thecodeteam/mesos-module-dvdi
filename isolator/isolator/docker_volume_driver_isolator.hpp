@@ -131,6 +131,8 @@ private:
   const std::string VOL_DRIVER_ENV_VAR_NAME = "DVDI_VOLUME_DRIVER";
   const std::string VOL_NAME_CMD_OPTION = "--volumename=";
   const std::string VOL_DRIVER_CMD_OPTION = "--volumedriver=";
+  const std::string VOL_OPTS_VAR_NAME = "DVDI_VOLUME_OPTS";
+
 };
 
 } /* namespace slave */
