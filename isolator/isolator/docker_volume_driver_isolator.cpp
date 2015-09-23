@@ -203,14 +203,14 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
       variableObject.values["value"] = variable.value();
       jsonVariables.values.push_back(variableObject);
 
-      if (variable.name() == REXRAY_MOUNT_VOL_ENVIRONMENT_VAR_NAME) {
+      if (variable.name() == VOL_NAME_ENV_VAR_NAME) {
     	  volumeName = variable.value();
       }
   }
   environment.values["variables"] = jsonVariables;
 
   if (volumeName.empty()) {
-      LOG(WARNING) << "No " << REXRAY_MOUNT_VOL_ENVIRONMENT_VAR_NAME << " environment variable specified for container ";
+      LOG(WARNING) << "No " << VOL_NAME_ENV_VAR_NAME << " environment variable specified for container ";
   }
 
   // we have a volume name, now check if we are the first task to request a mount

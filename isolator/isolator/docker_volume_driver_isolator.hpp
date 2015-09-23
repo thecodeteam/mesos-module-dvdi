@@ -58,10 +58,10 @@ public:
 	// will mount the volume
     //
 	// FUTURE. get desired volume driver (volumedriver=) from ENVIRONMENT from task in ExecutorInfo
-	//     REXRAY_MOUNT_VOL_ENVIRONMENT_VAR_NAME is defined below
+	//     VOL_DRIVER_ENV_VAR_NAME is defined below
     //
-	// 1. get volume identifier (from ENVIRONMENT from task in ExecutorInfo VOLID
-	//     REXRAY_MOUNT_VOL_ENVIRONMENT_VAR_NAME is defined below
+	// 1. get volume identifier (from ENVIRONMENT from task in ExecutorInfo
+	//     VOL_NAME_ENV_VAR_NAME is defined below
     //     This is volume name, not ID.
 	//     Warning, name collisions on name can be trecherous.
 	//     For now a simple string value is presumed, will need to enhance to
@@ -127,7 +127,10 @@ private:
   const std::string REXRAY_MOUNT_PREFIX = "/var/lib/rexray/volumes/";
   const std::string REXRAY_DVDCLI_MOUNT_CMD = "/go/src/github.com/clintonskitson/dvdcli/dvdcli mount --volumedriver=rexray --volumename=";
   const std::string REXRAY_DVDCLI_UNMOUNT_CMD = "/go/src/github.com/clintonskitson/dvdcli/dvdcli unmount --volumedriver=rexray --volumename=";
-  const std::string REXRAY_MOUNT_VOL_ENVIRONMENT_VAR_NAME = "DVDI_VOLUME_NAME";
+  const std::string VOL_NAME_ENV_VAR_NAME = "DVDI_VOLUME_NAME";
+  const std::string VOL_DRIVER_ENV_VAR_NAME = "DVDI_VOLUME_DRIVER";
+  const std::string VOL_NAME_CMD_OPTION = "--volumename=";
+  const std::string VOL_DRIVER_CMD_OPTION = "--volumedriver=";
 };
 
 } /* namespace slave */
