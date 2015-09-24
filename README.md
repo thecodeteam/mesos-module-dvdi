@@ -1,109 +1,82 @@
-# docker-volume-driver-isolator
+# dvdi-modules
+
+This repo contains the `Docker Volume Driver Isolator Module` for Mesos.  The purpose is to create a module that lives on the Mesos Slaves (agents) that enables external storage to be created/mounted/unmounted with each task that is assigned to a slave.
+
+The module, through [dvdcli](https://github.com/clintonskitson/dvdcli), is exposing any existing `Docker Volume Drivers` to be used **without** the `Docker` containerizer.  All `Volume Drivers` that work with `Docker`, **will also** work with `dvdcli` and thus this `Isolator Module`.
+
+Currently it targets Mesos 0.23.0.
 
 Project Summary
 -------------------
-Mesos is a cluster manager that schedules workloads in a way that optimizes efficient use of available cluster resources.  
+This repo is part of a larger project to deliver external storage capabilities to the Mesos platform.  
 
-The pre-0.23.0 Mesos architecture is based on having cluster node agents (aka slaves) determine and report their available resources, This works adequately when workloads consume storage exclusively from direct attached storage on the cluster nodes, but externally host shared storage volumes have been outside the scope of Mesos management.
+The existing Mesos architecture (0.23.0) is based on having cluster node agents (aka slaves) determine and report their available resources. This works adequately when workloads consume storage exclusively from direct attached storage on the cluster nodes, but no so well for external storage volumes possibly shared among Mesos slaves.
 
-This is an ongoing project to provide a Mesos plugin module that allows Mesos to extend the scope of management to include network attached storage.
+The larger project involved defining "clustered resources" for slaves to consume.  See the notes, project, and planning information (here)[https://github.com/cantbewong/mesos-proposal-externalstorage].
 
-The current release of this project supports volume mount/dismounts from external storage.  
+Functionality
+-------------
+With this module running, the frameworks are now able to leverage the environment variables parameters to determine which `Volume` from which `Storage Platform` to make available on the `Mesos Slaves`.  This is without a resource advertisement.  Below is an example of `Marathon` specifying an environment variable for `Volume Management`.  
 
-Mesos to management of storage mounts allows flexible deployemnt of applications across a cluster. For example, an application configured in Marathon, can declare external storage needs, and Mesos will manage mounts without tying the application to a single specific cluster node. This feature is also useful for applications that require persistent storage.
+In addition, notice how the `VOLUME_OPTS` parameter allows for specifying extra functionality.  The `size`, `iops`, and `volumetype` can be requested from the `Storage Platform` if the `Volume` does not exist yet.  In addition, when the `Volume` is then created, a filesystem (EXT4/XFS) can be specified to be used on the `Volume`.
 
-It is expected that over time, this module will be extended to offer more storage related features.
+There is one additional option, `overwritefs` which can be used to determine whether to overwrite the filesystem or not.  When the `overwritefs` flag is set and the `Volume` is detected to contain a EXT4/XFS filesystem, it wil be replaced.  Otherwise a filesystem will **always** be created if EXT4/XFS is not found.
 
-Build Requirements
--------------------
-Build tool and library requirements are similar to Mesos. (See below for a description of a Docker container image that pre-configures and automates many of these requirements):
+Options like these are only available if your `Volume Driver` exposes them.  For `REX-Ray`, these are supported but depend on the `Storage Driver`.
 
-- install bash-completion maven autoconf automake libtool subversion boost(libboost1.54-dev)
-- also install gtest, glog (libgoogle-glog-dev), and picojson
-    - picojson.h must be copied to /usr/local/include
-- install protobuf-2.5.0
-    - Mesos has this in tar.gz form but it must be uncompressed and installed in the mesos/3rdparty/libprocess/3rdparty/protobuf-2.5.0 directory
-        - tar -xzf protobuf-2.5.0.tar.gz
-        - cd protobuf-2.5.0
-        - sudo ./configure
-        - sudo make
-        - sudo make check
-        - sudo make install
-        - protoc --version
-
-export MESOS_HOME=/path/to/mesos  
-export GTEST_HOME=/path/to/gtest-1.7.0  
-export MAVEN_HOME = /usr/share/maven
-
-To invoke an automake build:
-
-cd docker-volume-driver-isolator/isolator  
-./bootstrap  
-rm -rf build  
-mkdir build  
-cd build  
-export LD_LIBRARY_PATH=LD_LIBRARY_PATH:/usr/local/lib  
-../configure --with-mesos-root=/mesos --with-mesos-build-dir=/mesos  
-make
-
-
-A libmesos_dvdi_isolator-<version>.so will be generated
-in isolator/build/.libs
-
-Copy/Update libmesos_dvdi_isolator-<version>.so on slave(s), typically in /usr/lib/
-
+```
+"env": {
+  "DVDI_VOLUME_NAME": "testing",
+  "DVDI_VOLUME_DRIVER": "platform1",
+  "DVDI_VOLUME_OPTS": "size=5,iops=150,volumetype=io1,newfstype=xfs,overwritefs=true"
+```
 
 # Mesos Agent Configuration
 
-The .so file is an implementation of a Mesos module. In particular, it reports itself as a Mesos Isolator module for installation on Mesos Agent nodes.
+The `.so` file is an implementation of a `Mesos Isolator Module`.
 
-### Installation Steps
+### Volume Driver Endpoint
+---
+[REX-Ray](https://github.com/emccode/rexray) is a `Docker Volume Driver` endpoint that runs as a service that can be then consumed by `dvdcli`.  Any volume driver can be used in it's place.  See the [Docker Plugin List](https://github.com/docker/docker/blob/master/docs/extend/plugins.md).
 
-1. Copy the .so file to the filesystem.
-2. Compose and install a small .json configuration file
-3. Create or edit the agent (mesos-slave) startup configuration flag to allow the agent to find and utilize the .json file
+`REX-Ray` provides visibility and management of external/underlying storage via guest storage introspection.
 
+Here is a one-liner `REX-Ray` install.  Further than this, a configuration file or environment variables must be specified followed by `rexray start` to begin servicing requests.  See the project page for more details.
 
-### Pre-requisite:
+```
+curl -sSL https://dl.bintray.com/emccode/rexray/install | sh -
+```
 
-1. Install the REX-Ray Docker Volume driver API implementation on agent.
-2. Install the DVD CLI interface on agent.
+Issuing a `rexray volume` should return you a list of volumes if the configuration is correct for your storage platform.
 
+### Docker Volume Driver CLI
+---
 
-Detailed instructions:   
+The isolator utilizes a CLI implementation of the `Docker Volume Driver`, called [dvdcli](https://github.com/clintonskitson/dvdcli).  You can download it from [here](https://github.com/clintonskitson/dvdcli/releases/download/v0.1/dvdcli).  See the project page for instructions.
 
-Copy/Update libmesos_dvdi_isolator-\<version>.so  to /usr/lib/ on each Mesos Agent node that will offer external storage volumes.
+The `dvdcli` functions exactly as the `Docker` daemon would by looking up spec files from `/etc/docker` or socket files from `/run/docker/plugins` based on the `Volume Driver` name.  To make `dvdcli` work, a `Volume Driver` service must be actively running.
 
-Compose or copy a json configuration file tells the agent to load the module and enable the isolator.
+The combination of the `dvd` isolator, `dvdcli`, and the `Docker Volume Driver` must be functioning on each host.  The `Docker` daemon is not required.
 
-Mesos agent option flags may be specified in several ways, but one way is to create a text file in /etc/mesos-slave/modules
+The following commands should work which means the isolator should function as expected.  You should be retruned a path to a mounted volume.  Following this, perform a `unmount`.
 
+```
+/go/src/github.com/clintonskitson/dvdcli/dvdcli mount --volumedriver=rexray --volumename=test1
+```
+
+### Docker Volume Driver Isolator
+
+The installation of the isolator is simple.  It is a matter of placing the `.so` file, creating a json file, and updating the startup parameters.
+
+1. Copy/Update the `libmesos_dvdi_isolator-<version>.so`  to /usr/lib/ on each Mesos Agent node that will offer external storage volumes.
+
+2. Compose or copy a json configuration file tells the agent to load the module and enable the isolator.
+
+3. Mesos agent option flags may be specified in several ways, but one way is to create a text file in /etc/mesos-slave/modules
 
     - As an alternative, the mesos-slave command line flag "--modules=" can directly specify the location of the json file.
-
-Example of content in text file /etc/mesos-slave/modules:
-```
- /usr/lib/dvdi-mod.json
- ```
-
- Alternative: Run Slave, with explicit --modules flag
- ---------
- ```
- nohup  /usr/sbin/mesos-slave \ --isolation="com_emc_mesos_DockerVolumeDriverIsolator" \
- --master=zk://172.31.0.11:2181/mesos \
- --log_dir=/var/log/mesos \
- --containerizers=docker,mesos \
- --executor_registration_timeout=5mins \
- --ip=172.31.2.11 --work_dir=/tmp/mesos \
- --modules=file:///usr/lib/dvdi-mod.json &
- ```
-
----------
-
-Example JSON file to configure the docker volume driver isolater module on a Mesos slave:  
-
-    Load a library libmesos_dvdi_isolator-0.23.0.so with module com_emccode_mesos_DockerVolumeDriverIsolator. Suggested location is /usr/lib/dvdi-mod.json
-```
+    - Example of content in text file /usr/lib/dvdi-mod.json
+    ```
      {
        "libraries": [
          {
@@ -116,55 +89,39 @@ Example JSON file to configure the docker volume driver isolater module on a Mes
          }
        ]
      }
-```
+    ```
+4. Alternative: Run Slave, with explicit --modules flag
+
+    ```
+    nohup  /usr/sbin/mesos-slave \ --isolation="com_emc_mesos_DockerVolumeDriverIsolator" \
+    --master=zk://172.31.0.11:2181/mesos \
+    --log_dir=/var/log/mesos \
+    --containerizers=docker,mesos \
+    --executor_registration_timeout=5mins \
+    --ip=172.31.2.11 --work_dir=/tmp/mesos \
+    --modules=file:///usr/lib/dvdi-mod.json &
+    ```
 
 
-## Slave Pre-requisite
 
-### DVD CLI Available At
----
-[dvdcli](https://github.com/clintonskitson/dvdcli)
+### Module file compilation (optional)
 
-The isolator utilizes an abstraction driver based on the Docker Volume Driver API, called dvdcli.
+A libmesos_dvdi_isolator-<version>.so will be generated
+in isolator/build/.libs
 
-One-liner dvdcli install:
-
-```
-coming soon: get release from github
-```
-
-
-### REX-Ray Available At
----
-[REX-Ray](https://github.com/emccode/rexray)
-
-REX-Ray is a volume driver endpoint used by dvdcli
-
-REX-Ray provides visibility and management of external/underlying storage via guest storage introspection.
-
-One-liner REX-Ray install:
-
-```
-curl -sSL https://dl.bintray.com/emccode/rexray/install | sh -
-```
+Copy/Update libmesos_dvdi_isolator-<version>.so on slave(s), typically in /usr/lib/
 
 
 
 
-DVD CLI and REX-Ray must be installed on each Mesos agent node that uses the docker volume isolator. The installation can (and should) be tested at a command line.
-
-Example DVD CLI command line invocation to test installation of REX-Ray and DVD CLI:
----
-
-```
-/go/src/github.com/clintonskitson/dvdcli/dvdcli mount --volumedriver=rexray --volumename=test123456789  --volumeopts=size=5 --volumeopts=iops=150 --volumeopts=volumetype=io1 --volumeopts=newFsType=ext4 --volumeopts=overwritefs=true
-```
 
 
-# How to use Marathon to submit a job, mounting an external storage volume
 
 
-### Example Marathon Call - using configuration in test.json file
+# Examples
+
+### Example Marathon Call
+The following will submit a job, which mounts a volume from an external storage platform
 ---
 
 `curl -i -H 'Content-Type: application/json' -d @test.json localhost:8080/v2/apps`
@@ -186,21 +143,40 @@ Example DVD CLI command line invocation to test installation of REX-Ray and DVD 
 }
 ```
 
+# Troubleshooting
+See the `/var/log/mesos/mesos-slave.INFO` log for details.  Troubleshooting via `dvdcli` is always a great first step.
 
-# How to build this project using a pre-composed Docker image
+
+# Building Module with Docker Images
 
 
 To simplify the process of assembling and configuring a build environment for the docker volume driver isolator, a Docker image is offered.
 
+### Build using our Docker Module Build Image
+`git clone https://github.com/cantbewong/docker-volume-driver-isolator`
+`cd docker-volume-driver-isolator`
+`docker run -ti -v pathtoisolator/isolator emccode/mesos-build-dvdi-modules:0.23.0`
 
-Build Docker Images
--------------------
+### (optional) Build a custom Mesos Build Image
+
 `docker build -t name/mesos-build-module-dev:0.23.0 - < Dockerfile-mesos-build-module-dev`
 
 `docker build -t name/mesos-build-module-dvdi:0.23.0 - < Dockerfile-mesos-build-module-dvdi`
 
 
-Build DVDI Module
------------------
+### (optional) Build a custom Mesos DVDI Module Build Image
+
 `git clone https://github.com/cantbewong/docker-volume-driver-isolator && cd docker-volume-driver-isolator`  
-`docker run -ti -v path-to-docker-volume-driver-isolator:/isolator clintonskitson/dvdi-modules:0.23.0`
+`docker run -ti -v path-to-docker-volume-driver-isolator:/isolator name/dvdi-modules:0.23.0`
+
+Following this use this docker image to do a module build as shown in the first step.
+
+# Licensing
+---------
+Licensed under the Apache License, Version 2.0 (the “License”); you may not use this file except in compliance with the License. You may obtain a copy of the License at <http://www.apache.org/licenses/LICENSE-2.0>
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an “AS IS” BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+
+# Support
+-------
+Please file bugs and issues at the Github issues page. For more general discussions you can contact the EMC Code team at <a href="https://groups.google.com/forum/#!forum/emccode-users">Google Groups</a> or tagged with **EMC** on <a href="https://stackoverflow.com">Stackoverflow.com</a>. We also are available for real-time feedback on the EMC {code} Slack channel [here](http://community.emccode.com/).  The code and documentation are released with no warranties or SLAs and are intended to be supported through a community driven process.
