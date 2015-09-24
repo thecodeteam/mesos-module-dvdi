@@ -1,7 +1,12 @@
 # docker-volume-driver-isolator
-This is an Isolator for Mesos that provides external storage management for Mesos containers
+This project is an Isolator module for Mesos. This isolator manages volumes mounted from external storage.  
 
-for all builds (docker host should have these already):
+This allows Mesos to manage external storage mounts for applications.
+
+
+Build Requirements
+-------------------
+Build tool and library requirements are similar to Mesos. (See below for a description of a Docker container image that pre-configures and automates many of these requirements):
 
 - install bash-completion maven autoconf automake libtool subversion boost(libboost1.54-dev)
 - also install gtest, glog (libgoogle-glog-dev), and picojson
@@ -16,42 +21,20 @@ for all builds (docker host should have these already):
         - sudo make install
         - protoc --version
 
-export MESOS_HOME=/path/to/mesos
+export MESOS_HOME=/path/to/mesos  
 export GTEST_HOME=/path/to/gtest-1.7.0  
 export MAVEN_HOME = /usr/share/maven
 
+To invoke an automake build:
 
-
-To build with vagrant docker image:
-
-cd docker-volume-driver-isolator/isolator
-./bootstrap
-rm -rf build
-mkdir build
-cd build
-export LD_LIBRARY_PATH=LD_LIBRARY_PATH:/usr/local/lib
-../configure --with-mesos-root=/mesos --with-mesos-build-dir=/mesos
+cd docker-volume-driver-isolator/isolator  
+./bootstrap  
+rm -rf build  
+mkdir build  
+cd build  
+export LD_LIBRARY_PATH=LD_LIBRARY_PATH:/usr/local/lib  
+../configure --with-mesos-root=/mesos --with-mesos-build-dir=/mesos  
 make
-
-Example JSON strings:
-
-    Load a library libfoo.so with two modules org_apache_mesos_bar and org_apache_mesos_baz.
-
-     {
-       "libraries": [
-         {
-           "file": "/path/to/libfoo.so",
-           "modules": [
-             {
-               "name": "org_apache_mesos_bar"
-             },
-             {
-               "name": "org_apache_mesos_baz"
-             }
-           ]
-         }
-       ]
-     }
 
 
 A libmesos_dvdi_isolator-<version>.so will be generated
@@ -60,17 +43,65 @@ in isolator/build/.libs
 Copy/Update libmesos_dvdi_isolator-<version>.so on slave(s) in /usr/lib/
 
 
-Build Docker Images
--------------------
-`docker build -t name/mesos-build-module-dev:0.23.0 - < Dockerfile-build-mesos-dev`
+# Mesos Agent Configuration
 
-`docker build -t name/mesos-build-module-dvdi:0.23.0 - < Dockerfile-build-build-module-dvdi`
+The .so file is an implementation of a Mesos module. In particular, it is a Mesos Isolator module for installation on Mesos Agent nodes.
+
+Copy/Update libmesos_dvdi_isolator-<version>.so  /usr/lib/ to on each Mesos Agent node that will offer mounted storage volumes.
+
+The json configuration file tells the agent to load the module and enable the isolator. The command line flag "--modules=" specifies the location of the json file. Mesos agent option flags may be specified in several ways, but one way is to create a text file in /etc/mesos-slave/modules
+
+Example of content in text file /etc/mesos-slave/modules:
+```
+ /usr/lib/dvdi-mod.json
+ ```
 
 
-Build DVDI Module
------------------
-`git clone https://github.com/cantbewong/docker-volume-driver-isolator && cd docker-volume-driver-isolator`
-`docker run -ti -v path-to-docker-volume-driver-isolator:/isolator clintonskitson/dvdi-modules:0.23.0`
+---------
+
+Example JSON file to configure a Mesos Isolator module on a Mesos slave:  
+
+    Load a library libmesos_dvdi_isolator-0.23.0.so with two modules org_apache_mesos_bar and org_apache_mesos_baz.
+```
+     {
+       "libraries": [
+         {
+           "file": "/usr/lib/libmesos_dvdi_isolator-0.23.0.so",
+           "modules": [
+             {
+               "name": "com_emccode_mesos_DockerVolumeDriverIsolator"
+             }
+           ]
+         }
+       ]
+     }
+```
+
+The isolator utilizes an abstraction driver based on the Docker Volume Driver API, called dvdcli.
+
+DVD CLI Available At
+---
+[dvdcli](https://github.com/clintonskitson/dvdcli)
+
+REX-Ray is a volume driver endpoint used by dvdcli
+
+REX-Ray provides visibility and management of external/underlying storage via guest storage introspection.
+REX-Ray Available At
+---
+[REX-Ray](https://github.com/emccode/rexray)
+
+
+DVD CLI and REX-Ray must be installed on each Mesos agent node using the isolator. The installation can (and should) be tested at a command line.
+
+Example DVD CLI Call
+---
+
+```
+/go/src/github.com/clintonskitson/dvdcli/dvdcli mount --volumedriver=rexray --volumename=test123456789  --volumeopts=size=5 --volumeopts=iops=150 --volumeopts=volumetype=io1 --volumeopts=newFsType=ext4 --volumeopts=overwritefs=true
+```
+
+
+# Using the isolator
 
 Run Slave
 ---------
@@ -84,21 +115,6 @@ nohup  /usr/sbin/mesos-slave \ --isolation="com_emc_mesos_DockerVolumeDriverIsol
 --modules=file:///home/ubuntu/docker-volume-driver-isolator/isolator/modules.json &
 ```
 
-REX-Ray Available At
----
-[REX-Ray](https://github.com/emccode/rexray)
-
-DVD CLI Available At
----
-[dvdcli](https://github.com/clintonskitson/dvdcli)
-
-
-Example DVD CLI Call
----
-
-```
-/go/src/github.com/clintonskitson/dvdcli/dvdcli mount --volumedriver=rexray --volumename=test123456789  --volumeopts=size=5 --volumeopts=iops=150 --volumeopts=volumetype=io1 --volumeopts=newFsType=ext4 --volumeopts=overwritefs=true
-```
 
 Example Marathon Call - test.json
 ---
@@ -121,3 +137,22 @@ Example Marathon Call - test.json
   }
 }
 ```
+
+
+# Docker image for Build and development
+
+
+To simplify the process of assembling and configuring a build environment for the docker volume driver isolaor, a Docker image is offered.
+
+
+Build Docker Images
+-------------------
+`docker build -t name/mesos-build-module-dev:0.23.0 - < Dockerfile-mesos-build-module-dev`
+
+`docker build -t name/mesos-build-module-dvdi:0.23.0 - < Dockerfile-mesos-build-module-dvdi`
+
+
+Build DVDI Module
+-----------------
+`git clone https://github.com/cantbewong/docker-volume-driver-isolator && cd docker-volume-driver-isolator`  
+`docker run -ti -v path-to-docker-volume-driver-isolator:/isolator clintonskitson/dvdi-modules:0.23.0`
