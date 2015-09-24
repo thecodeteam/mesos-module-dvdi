@@ -2,17 +2,17 @@
 
 Project Summary
 -------------------
-Mesos is a cluster manager that schedule workloads in a way that optimizes efficient use of available resources.  
+Mesos is a cluster manager that schedules workloads in a way that optimizes efficient use of available cluster resources.  
 
-The pre-0.23.0 Mesos architecture is based on having ernal network attached agents (slave cluster nodes) determine and report their available resources, This works well when workloads consume store exclusively from direct attached storage within agent nodes, but externally host shared storage volumes have been outside the scope of Mesos management.
+The pre-0.23.0 Mesos architecture is based on having cluster node agents (aka slaves) determine and report their available resources, This works adequately when workloads consume storage exclusively from direct attached storage on the cluster nodes, but externally host shared storage volumes have been outside the scope of Mesos management.
 
-This is an ongoing project to provide a Mesos plugin module, in order to allow Mesos to extend the scope of what is managed to include network attached storage.
+This is an ongoing project to provide a Mesos plugin module that allows Mesos to extend the scope of management to include network attached storage.
 
-The current release of this isolator manages volumes mounted from external storage.  
+The current release of this project supports volume mount/dismounts from external storage.  
 
-This allows Mesos to manage external storage mounts for applications. For example, an application configured in Marathon, can declare external storage needs, and Mesos will manage mounts without tying the application to a single specific cluster node.
+Mesos to management of storage mounts allows flexible deployemnt of applications across a cluster. For example, an application configured in Marathon, can declare external storage needs, and Mesos will manage mounts without tying the application to a single specific cluster node. This feature is also useful for applications that require persistent storage.
 
-It is expected that over time, this module will be extended to more storage related features.
+It is expected that over time, this module will be extended to offer more storage related features.
 
 Build Requirements
 -------------------
@@ -50,7 +50,7 @@ make
 A libmesos_dvdi_isolator-<version>.so will be generated
 in isolator/build/.libs
 
-Copy/Update libmesos_dvdi_isolator-<version>.so on slave(s) in /usr/lib/
+Copy/Update libmesos_dvdi_isolator-<version>.so on slave(s), typically in /usr/lib/
 
 
 # Mesos Agent Configuration
@@ -59,26 +59,27 @@ The .so file is an implementation of a Mesos module. In particular, it reports i
 
 ### Installation Steps
 
-1. Install .so file
-2. Compose and install .json configuration file
-3. Create or edit agent startup configuration flag to allow the agent to find and utilize the .json file
+1. Copy the .so file to the filesystem.
+2. Compose and install a small .json configuration file
+3. Create or edit the agent (mesos-slave) startup configuration flag to allow the agent to find and utilize the .json file
 
 
 ### Pre-requisite:
 
-1. Install REX-Ray Docker Volume driver API implementation.
-2. Install DVD CLI interface.
+1. Install the REX-Ray Docker Volume driver API implementation on agent.
+2. Install the DVD CLI interface on agent.
 
 
-Detailed instructions   
+Detailed instructions:   
 
-Copy/Update libmesos_dvdi_isolator-<version>.so  to /usr/lib/ on each Mesos Agent node that will offer mounted storage volumes.
+Copy/Update libmesos_dvdi_isolator-\<version>.so  to /usr/lib/ on each Mesos Agent node that will offer external storage volumes.
 
-The json configuration file tells the agent to load the module and enable the isolator.
+Compose or copy a json configuration file tells the agent to load the module and enable the isolator.
 
 Mesos agent option flags may be specified in several ways, but one way is to create a text file in /etc/mesos-slave/modules
 
-As an alternative, the mesos-slave command line flag "--modules=" can directly specify the location of the json file.
+
+    - As an alternative, the mesos-slave command line flag "--modules=" can directly specify the location of the json file.
 
 Example of content in text file /etc/mesos-slave/modules:
 ```
@@ -117,21 +118,29 @@ Example JSON file to configure the docker volume driver isolater module on a Mes
      }
 ```
 
-The isolator utilizes an abstraction driver based on the Docker Volume Driver API, called dvdcli.
 
-DVD CLI Available At
+## Slave Pre-requisite
+
+### DVD CLI Available At
 ---
 [dvdcli](https://github.com/clintonskitson/dvdcli)
 
+The isolator utilizes an abstraction driver based on the Docker Volume Driver API, called dvdcli.
+
+One-liner dvdcli install:
+
+```
+coming soon: get release from github
+```
 
 
+### REX-Ray Available At
+---
+[REX-Ray](https://github.com/emccode/rexray)
 
 REX-Ray is a volume driver endpoint used by dvdcli
 
 REX-Ray provides visibility and management of external/underlying storage via guest storage introspection.
-REX-Ray Available At
----
-[REX-Ray](https://github.com/emccode/rexray)
 
 One-liner REX-Ray install:
 
@@ -142,7 +151,7 @@ curl -sSL https://dl.bintray.com/emccode/rexray/install | sh -
 
 
 
-DVD CLI and REX-Ray must be installed on each Mesos agent node using the isolator. The installation can (and should) be tested at a command line.
+DVD CLI and REX-Ray must be installed on each Mesos agent node that uses the docker volume isolator. The installation can (and should) be tested at a command line.
 
 Example DVD CLI command line invocation to test installation of REX-Ray and DVD CLI:
 ---
@@ -155,7 +164,7 @@ Example DVD CLI command line invocation to test installation of REX-Ray and DVD 
 # How to use Marathon to submit a job, mounting an external storage volume
 
 
-Example Marathon Call - test.json
+### Example Marathon Call - using configuration in test.json file
 ---
 
 `curl -i -H 'Content-Type: application/json' -d @test.json localhost:8080/v2/apps`
@@ -178,7 +187,7 @@ Example Marathon Call - test.json
 ```
 
 
-# How to build using the Docker image
+# How to build this project using a pre-composed Docker image
 
 
 To simplify the process of assembling and configuring a build environment for the docker volume driver isolator, a Docker image is offered.
