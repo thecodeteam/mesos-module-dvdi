@@ -167,14 +167,6 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
   return Nothing();
 }
 
-process::Future<Nothing> DockerVolumeDriverIsolatorProcess::isolate(
-   const ContainerID& containerId,
-   pid_t pid)
-{
- // No-op, isolation happens when mounting/unmounting in prepare/cleanup
- return Nothing();
-}
-
 // Prepare runs BEFORE a task is started
 // will check if the volume is already mounted and if not,
 // will mount the volume
