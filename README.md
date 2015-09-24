@@ -1,8 +1,18 @@
 # docker-volume-driver-isolator
-This project is an Isolator module for Mesos. This isolator manages volumes mounted from external storage.  
 
-This allows Mesos to manage external storage mounts for applications.
+Project Summary
+-------------------
+Mesos is a cluster manager that schedule workloads in a way that optimizes efficient use of available resources.  
 
+The pre-0.23.0 Mesos architecture is based on having ernal network attached agents (slave cluster nodes) determine and report their available resources, This works well when workloads consume store exclusively from direct attached storage within agent nodes, but externally host shared storage volumes have been outside the scope of Mesos management.
+
+This is an ongoing project to provide a Mesos plugin module, in order to allow Mesos to extend the scope of what is managed to include network attached storage.
+
+The current release of this isolator manages volumes mounted from external storage.  
+
+This allows Mesos to manage external storage mounts for applications. For example, an application configured in Marathon, can declare external storage needs, and Mesos will manage mounts without tying the application to a single specific cluster node.
+
+It is expected that over time, this module will be extended to more storage related features.
 
 Build Requirements
 -------------------
@@ -45,23 +55,53 @@ Copy/Update libmesos_dvdi_isolator-<version>.so on slave(s) in /usr/lib/
 
 # Mesos Agent Configuration
 
-The .so file is an implementation of a Mesos module. In particular, it is a Mesos Isolator module for installation on Mesos Agent nodes.
+The .so file is an implementation of a Mesos module. In particular, it reports itself as a Mesos Isolator module for installation on Mesos Agent nodes.
 
-Copy/Update libmesos_dvdi_isolator-<version>.so  /usr/lib/ to on each Mesos Agent node that will offer mounted storage volumes.
+### Installation Steps
 
-The json configuration file tells the agent to load the module and enable the isolator. The command line flag "--modules=" specifies the location of the json file. Mesos agent option flags may be specified in several ways, but one way is to create a text file in /etc/mesos-slave/modules
+1. Install .so file
+2. Compose and install .json configuration file
+3. Create or edit agent startup configuration flag to allow the agent to find and utilize the .json file
+
+
+### Pre-requisite:
+
+1. Install REX-Ray Docker Volume driver API implementation.
+2. Install DVD CLI interface.
+
+
+Detailed instructions   
+
+Copy/Update libmesos_dvdi_isolator-<version>.so  to /usr/lib/ on each Mesos Agent node that will offer mounted storage volumes.
+
+The json configuration file tells the agent to load the module and enable the isolator.
+
+Mesos agent option flags may be specified in several ways, but one way is to create a text file in /etc/mesos-slave/modules
+
+As an alternative, the mesos-slave command line flag "--modules=" can directly specify the location of the json file.
 
 Example of content in text file /etc/mesos-slave/modules:
 ```
  /usr/lib/dvdi-mod.json
  ```
 
+ Alternative: Run Slave, with explicit --modules flag
+ ---------
+ ```
+ nohup  /usr/sbin/mesos-slave \ --isolation="com_emc_mesos_DockerVolumeDriverIsolator" \
+ --master=zk://172.31.0.11:2181/mesos \
+ --log_dir=/var/log/mesos \
+ --containerizers=docker,mesos \
+ --executor_registration_timeout=5mins \
+ --ip=172.31.2.11 --work_dir=/tmp/mesos \
+ --modules=file:///usr/lib/dvdi-mod.json &
+ ```
 
 ---------
 
-Example JSON file to configure a Mesos Isolator module on a Mesos slave:  
+Example JSON file to configure the docker volume driver isolater module on a Mesos slave:  
 
-    Load a library libmesos_dvdi_isolator-0.23.0.so with two modules org_apache_mesos_bar and org_apache_mesos_baz.
+    Load a library libmesos_dvdi_isolator-0.23.0.so with module com_emccode_mesos_DockerVolumeDriverIsolator. Suggested location is /usr/lib/dvdi-mod.json
 ```
      {
        "libraries": [
@@ -83,6 +123,9 @@ DVD CLI Available At
 ---
 [dvdcli](https://github.com/clintonskitson/dvdcli)
 
+
+
+
 REX-Ray is a volume driver endpoint used by dvdcli
 
 REX-Ray provides visibility and management of external/underlying storage via guest storage introspection.
@@ -90,10 +133,18 @@ REX-Ray Available At
 ---
 [REX-Ray](https://github.com/emccode/rexray)
 
+One-liner REX-Ray install:
+
+```
+curl -sSL https://dl.bintray.com/emccode/rexray/install | sh -
+```
+
+
+
 
 DVD CLI and REX-Ray must be installed on each Mesos agent node using the isolator. The installation can (and should) be tested at a command line.
 
-Example DVD CLI Call
+Example DVD CLI command line invocation to test installation of REX-Ray and DVD CLI:
 ---
 
 ```
@@ -101,19 +152,7 @@ Example DVD CLI Call
 ```
 
 
-# Using the isolator
-
-Run Slave
----------
-```
-nohup  /usr/sbin/mesos-slave \ --isolation="com_emc_mesos_DockerVolumeDriverIsolator" \
---master=zk://172.31.0.11:2181/mesos \
---log_dir=/var/log/mesos \
---containerizers=docker,mesos \
---executor_registration_timeout=5mins \
---ip=172.31.2.11 --work_dir=/tmp/mesos \
---modules=file:///home/ubuntu/docker-volume-driver-isolator/isolator/modules.json &
-```
+# How to use Marathon to submit a job, mounting an external storage volume
 
 
 Example Marathon Call - test.json
@@ -139,10 +178,10 @@ Example Marathon Call - test.json
 ```
 
 
-# Docker image for Build and development
+# How to build using the Docker image
 
 
-To simplify the process of assembling and configuring a build environment for the docker volume driver isolaor, a Docker image is offered.
+To simplify the process of assembling and configuring a build environment for the docker volume driver isolator, a Docker image is offered.
 
 
 Build Docker Images
