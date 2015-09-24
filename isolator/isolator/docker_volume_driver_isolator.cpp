@@ -42,6 +42,7 @@
 #include "linux/fs.hpp"
 
 #include <stout/foreach.hpp>
+#include <stout/os/ls.hpp>
 
 #include <sstream>
 
@@ -106,16 +107,6 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
   // Sometime after the 0.23.0 release a ContainerState will be provided
   // instead of the current ExecutorRunState.
 
-
-  // Read the mount table in the host mount namespace to recover paths
-  // to device mountpoints.
-  // Method 'cleanup()' relies on this information to clean
-  // up mounts in the host mounts for each container.
-  Try<mesos::internal::fs::MountInfoTable> table = mesos::internal::fs::MountInfoTable::read();
-  if (table.isError()) {
-    return Failure("Failed to get mount table: " + table.error());
-  }
-
   hashset<std::string> inUseDirs;
 
   foreach (const ExecutorRunState& state, states) {
@@ -129,34 +120,31 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
   // Mounts from known orphans will be re-inserted into the infos hashmap
   set<std::string> unknownOrphans;
 
-  foreach (const mesos::internal::fs::MountInfoTable::Entry& entry, table.get().entries) {
-    if (!strings::startsWith(entry.root, REXRAY_MOUNT_PREFIX)) {
-      continue; // not a mount created by this isolator
-    }
-    bool dirInUse = false;
+  // get a list of entries under the rexray mount point
+  Try<std::list<std::string> > entries = os::ls(REXRAY_MOUNT_PREFIX);
+  if (entries.isSome()) {
+      LOG(INFO) << "rexray mounts found on recover()";
 
-    for(auto const ent : infos) {
-      if (ent.second->mountrootpath == entry.root) {
-   	    dirInUse = true;
-        break; // a known container is associated with this mount,
+    foreach (const std::string& entry, entries.get()) {
+      bool dirInUse = false;
+
+      for(auto const ent : infos) {
+        if (entry == ent.second->mountrootpath.substr(REXRAY_MOUNT_PREFIX.length())) {
+     	    dirInUse = true;
+          break; // a known container is associated with this mount,
+        }
       }
+      if (dirInUse) {
+      	continue;
+      }
+      unknownOrphans.insert(entry);
+      LOG(INFO) << entry << "is an orphan rexray mount found on recover()";
     }
-    if (dirInUse) {
-    	continue;
-    }
-    unknownOrphans.insert(entry.root);
   }
 
   foreach (const std::string orphan, unknownOrphans) {
-
-	  if (orphan.length() <= REXRAY_MOUNT_PREFIX.length()) {
-		  // too small to include a valid rexray mount
-		  continue;
-	  }
-	  const std::string volumeName = orphan.substr(REXRAY_MOUNT_PREFIX.length());
-
 	  if (system(NULL)) { // Is a command processor available?
-		std::string cmd = REXRAY_DVDCLI_UNMOUNT_CMD + volumeName;
+		std::string cmd = REXRAY_DVDCLI_UNMOUNT_CMD + orphan;
 	    int i = system(cmd.c_str());
 	    if( 0 != i ) {
 	        return Failure("recover() failed to execute unmount command " + cmd );
