@@ -1,3 +1,4 @@
+FROM yourcontainer:0.23.0
 MAINTAINER Steve Wong (EMCCODE)
 
 ENTRYPOINT cd /isolator/isolator && \
