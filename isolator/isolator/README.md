@@ -20,20 +20,10 @@ This module accepts ? parameters:
 {
   "libraries": [
     {
-      "file": "/path/to/libmesos_dvdi_isolator.so
+      file": "/usr/lib/libmesos_dvdi_isolator.so",
       "modules": [
         {
           "name": "com_emc_mesos_DockerVolumeDriverIsolator",
-          "parameters": [
-            {
-              "key": "initialization_command",
-              "value": "python /path/to/initialization_script.py arg1 arg2"
-            },
-            {
-              "key": "cleanup_command",
-              "value": "python /path/to/cleanup_script.py arg1 arg2"
-            }
-          ]
         }
       ]
     }

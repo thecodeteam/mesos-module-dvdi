@@ -43,6 +43,7 @@
 
 #include <stout/foreach.hpp>
 #include <stout/os/ls.hpp>
+#include <stout/format.hpp>
 
 #include <sstream>
 
@@ -107,12 +108,18 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
   // Sometime after the 0.23.0 release a ContainerState will be provided
   // instead of the current ExecutorRunState.
 
+ // TODO (when multi driver, multiple volume support implemented)
+ //    1. Deduce a list of all mounts from all volume drivers
+ //    2. Use this to embellish cleanup of orphanned mounts
+
   hashset<std::string> inUseDirs;
 
   foreach (const ExecutorRunState& state, states) {
 
     infos.put(state.id, Owned<Info>(new Info(state.directory)));
     inUseDirs.insert(state.directory) ;
+    LOG(INFO) << "running container found on recover()";
+    LOG(INFO) << "directory is (" << state.directory << ")";
   }
   // infos now has a root mount directory for every task now running
 
@@ -120,17 +127,38 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
   // Mounts from known orphans will be re-inserted into the infos hashmap
   set<std::string> unknownOrphans;
 
-  // get a list of entries under the rexray mount point
-  Try<std::list<std::string> > entries = os::ls(REXRAY_MOUNT_PREFIX);
-  if (entries.isSome()) {
-      LOG(INFO) << "rexray mounts found on recover()";
+  // Read currently mounted file systems from /proc/mounts.
+  Try<mesos::internal::fs::MountTable> table = mesos::internal::fs::MountTable::read("/proc/mounts");
+  if (table.isError()) {
+	  return Failure("Failed to read mount table: " + table.error());
+  }
 
-    foreach (const std::string& entry, entries.get()) {
+  std::list<std::string> mountlist
+//  foreach (const fs::MountTable::Entry& entry, table.get().entries) {
+  foreach (const mesos::internal::fs::MountTable::Entry& entry, table.get().entries) {
+      LOG(INFO) << "proc/mounts device is " << entry.fsname;
+      LOG(INFO) << "proc/mounts fsname is " << entry.dir;
+      if (entry.dir.length() <= REXRAY_MOUNT_PREFIX.length()) {
+    	continue; // too small to be a rexray mount
+      }
+      if (!strings::startsWith(entry.dir, REXRAY_MOUNT_PREFIX)) {
+    	  continue; // not a rexray mount
+      }
+      // we found a rexray mount
+      mountlist.push_back(entry.dir);
+  }
+
+// get a list of entries under the rexray mount point
+//  Try<std::list<std::string> > entries = os::ls(REXRAY_MOUNT_PREFIX);
+  if (!mountlist.empty()) {
+    LOG(INFO) << "rexray mounts found on recover()";
+
+    foreach (const std::string& entry, mountlist) {
       bool dirInUse = false;
 
       for(auto const ent : infos) {
         if (entry == ent.second->mountrootpath.substr(REXRAY_MOUNT_PREFIX.length())) {
-     	    dirInUse = true;
+          dirInUse = true;
           break; // a known container is associated with this mount,
         }
       }
@@ -138,19 +166,18 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
       	continue;
       }
       unknownOrphans.insert(entry);
-      LOG(INFO) << entry << "is an orphan rexray mount found on recover()";
+      LOG(INFO) << entry << "is an orphan rexray mount found on recover(), it will be unmounted";
     }
   }
 
   foreach (const std::string orphan, unknownOrphans) {
-	  if (system(NULL)) { // Is a command processor available?
-		std::string cmd = REXRAY_DVDCLI_UNMOUNT_CMD + orphan;
-	    int i = system(cmd.c_str());
-	    if( 0 != i ) {
-	        return Failure("recover() failed to execute unmount command " + cmd );
-	    }
-	  }
-
+     if (system(NULL)) { // Is a command processor available?
+	   std::string cmd = DVDCLI_UNMOUNT_CMD + orphan;
+       int i = system(cmd.c_str());
+       if( 0 != i ) {
+         return Failure("recover() failed to execute unmount command " + cmd );
+       }
+     }
   }
   return Nothing();
 }
@@ -170,6 +197,7 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
             << stringify(containerId);
 
   std::string volumeName;
+  std::string volumeDriver;
   std::string volumeOpts;
   JSON::Object environment;
   JSON::Array jsonVariables;
@@ -179,43 +207,54 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
 
   // get things we need from task's environment in ExecutoInfo
   if (!executorInfo.command().has_environment()) {
-	   // No environment means no external volume specification
-	  // not an error, just nothing to do so return None.
-      LOG(INFO) << "No environment specified for container ";
-	  return None();
+    // No environment means no external volume specification
+    // not an error, just nothing to do so return None.
+    LOG(INFO) << "No environment specified for container ";
+    return None();
   }
 
   // iterate through the environment variables,
   // looking for the ones we need
   foreach (const mesos:: Environment_Variable& variable,
            executorInfo.command().environment().variables()) {
-       JSON::Object variableObject;
-      variableObject.values["name"] = variable.name();
-      variableObject.values["value"] = variable.value();
-      jsonVariables.values.push_back(variableObject);
+    JSON::Object variableObject;
+    variableObject.values["name"] = variable.name();
+    variableObject.values["value"] = variable.value();
+    jsonVariables.values.push_back(variableObject);
 
-      if (variable.name() == VOL_NAME_ENV_VAR_NAME) {
-    	  volumeName = variable.value();
-      }
+    if (variable.name() == VOL_NAME_ENV_VAR_NAME) {
+   	  volumeName = variable.value();
+    }
 
-      if (variable.name() == VOL_OPTS_VAR_NAME) {
-	  volumeOpts = variable.value();
-      }
+    if (variable.name() == VOL_DRIVER_ENV_VAR_NAME) {
+   	  volumeDriver = variable.value();
+    }
+
+    if (variable.name() == VOL_OPTS_ENV_VAR_NAME) {
+      volumeOpts = variable.value();
+    }
   }
+  // TODO: json environment is not used yet, but will be when multi mount support is completed
   environment.values["variables"] = jsonVariables;
 
   if (volumeName.empty()) {
-      LOG(WARNING) << "No " << VOL_NAME_ENV_VAR_NAME << " environment variable specified for container ";
+    LOG(WARNING) << "No " << VOL_NAME_ENV_VAR_NAME << " environment variable specified for container ";
+    return None();
   }
 
+  if (volumeDriver.empty()) {
+    volumeDriver = VOL_DRIVER_DEFAULT;
+  }
+
+  // parse and format volume options
   std::stringstream ss(volumeOpts);
   std::string opts;
 
   while( ss.good() )
   {
-      string substr;
-      getline( ss, substr, ',' );
-      opts = opts + " --volumeopts=" + substr;
+    string substr;
+    getline( ss, substr, ',' );
+    opts = opts + VOL_OPTS_CMD_OPTION + substr;
   }
 
   // we have a volume name, now check if we are the first task to request a mount
@@ -231,10 +270,17 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
 
   if (!mountInUse) {
     if (system(NULL)) { // Is a command processor available?
-	  std::string cmd = REXRAY_DVDCLI_MOUNT_CMD + volumeName + " " + opts;
-      int i = system(cmd.c_str());
+      const Try<std::string>& cmd = strings::format("%s %s%s %s%s %s",
+          DVDCLI_MOUNT_CMD,
+		  VOL_DRIVER_CMD_OPTION, volumeDriver,
+		  VOL_NAME_CMD_OPTION, volumeName,
+		  opts);
+      if (cmd.isError()) {
+            return Failure("prepare() failed to format a mount command from env vars" + cmd.error() );
+      }
+      int i = system(cmd.get().c_str());
       if( 0 != i ) {
-        return Failure("prepare() failed to execute mount command " + cmd );
+        return Failure("prepare() failed to execute mount command " + cmd.get() );
       }
     }
   }
@@ -281,6 +327,10 @@ process::Future<Nothing> DockerVolumeDriverIsolatorProcess::isolate(
 Future<Nothing> DockerVolumeDriverIsolatorProcess::cleanup(
     const ContainerID& containerId)
 {
+  // TODO (when multi driver, multiple volume support implemented)
+  //    1. Get driver name and volume list from enhance infos
+  //    2. Iterate list and perform unmounts
+
   if (!infos.contains(containerId)) {
     return Nothing();
   }
@@ -311,15 +361,15 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::cleanup(
 
   if (mountcount == 1) {
     // we were the only or last user of the mount
-	  const std::string volumeName = mountToRelease.substr(REXRAY_MOUNT_PREFIX.length());
+    const std::string volumeName = mountToRelease.substr(REXRAY_MOUNT_PREFIX.length());
 
-	  if (system(NULL)) { // Is a command processor available?
-		std::string cmd = REXRAY_DVDCLI_UNMOUNT_CMD + volumeName;
-	    int i = system(cmd.c_str());
-	    if( 0 != i ) {
-	        return Failure("Failed to execute unmount command " + cmd );
-	    }
-	  }
+    if (system(NULL)) { // Is a command processor available?
+	  std::string cmd = DVDCLI_UNMOUNT_CMD + volumeName;
+      int i = system(cmd.c_str());
+      if( 0 != i ) {
+        return Failure("Failed to execute unmount command " + cmd );
+      }
+    }
   }
 
   // For a normally exited container, we take its info pointer off the
@@ -343,8 +393,8 @@ static Isolator* createDockerVolumeDriverIsolator(const Parameters& parameters)
   return result.get();
 }
 
-// Declares the isolator named
-mesos::modules::Module<Isolator> com_emc_mesos_DockerVolumeDriverIsolator(
+// Declares the isolator named com_emccode_mesos_DockerVolumeDriverIsolator
+mesos::modules::Module<Isolator> com_emccode_mesos_DockerVolumeDriverIsolator(
     MESOS_MODULE_API_VERSION,
     MESOS_VERSION,
     "emc{code}",
