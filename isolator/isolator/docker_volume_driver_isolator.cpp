@@ -27,6 +27,9 @@
 // the executor work directory, which I am speculating is confurable as a work-around.
 // If the executor work directory is not set to the dvdcli mount path, then recover won't clean up
 // orphaned mounts, but it should do no harm.infos
+#include <fstream>
+#include <list>
+
 #include <mesos/mesos.hpp>
 #include <mesos/module.hpp>
 #include <mesos/module/isolator.hpp>
@@ -40,7 +43,7 @@
 #include <process/subprocess.hpp>
 
 #include "linux/fs.hpp"
-
+using namespace mesos::internal;
 #include <stout/foreach.hpp>
 #include <stout/os/ls.hpp>
 #include <stout/format.hpp>
@@ -54,7 +57,7 @@ using std::set;
 using std::string;
 
 using namespace mesos;
-using namespace slave;
+using namespace mesos::slave;
 
 using mesos::slave::ExecutorRunState;
 using mesos::slave::Isolator;
@@ -128,14 +131,13 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
   set<std::string> unknownOrphans;
 
   // Read currently mounted file systems from /proc/mounts.
-  Try<mesos::internal::fs::MountTable> table = mesos::internal::fs::MountTable::read("/proc/mounts");
+  Try<fs::MountTable> table = fs::MountTable::read("/proc/mounts");
   if (table.isError()) {
 	  return Failure("Failed to read mount table: " + table.error());
   }
 
-  std::list<std::string> mountlist
-//  foreach (const fs::MountTable::Entry& entry, table.get().entries) {
-  foreach (const mesos::internal::fs::MountTable::Entry& entry, table.get().entries) {
+  std::list<std::string> mountlist;
+  foreach (const fs::MountTable::Entry& entry, table.get().entries) {
       LOG(INFO) << "proc/mounts device is " << entry.fsname;
       LOG(INFO) << "proc/mounts fsname is " << entry.dir;
       if (entry.dir.length() <= REXRAY_MOUNT_PREFIX.length()) {
