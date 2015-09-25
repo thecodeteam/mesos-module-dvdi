@@ -126,6 +126,8 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
   }
   // infos now has a root mount directory for every task now running
 
+  //disable unmount in recover() until some issues are resolved
+/*
   // Mounts from unknown orphans will be cleaned up now.
   // Mounts from known orphans will be re-inserted into the infos hashmap
   set<std::string> unknownOrphans;
@@ -181,6 +183,7 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
        }
      }
   }
+  */
   return Nothing();
 }
 
