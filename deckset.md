@@ -14,6 +14,13 @@
 ![inline fill 55%](/Users/clintonkitson/Projects/150924/diagram1.png)
 
 ---
+# Installing
+1. Install and Test **rexray** (or others)
+2. Install and Test **dvdcli**
+3. Install **Mesos dvdi module**
+4. Send Marathon Job
+
+---
 
 ## Invoking with Jobs
 
@@ -31,19 +38,29 @@
 
 ---
 
+# DEMO
+
+---
+
+# Next Steps for MesosCon EU Demo
+
+---
+# Critical Path
+- Mesos containerizer for isolation of FS
+ - Priority of isolators
+ - Subclass of mesos containerizer
+- Multiple volumes per task
+- Slave recovery
+
+---
+
 # Caveats
 - Slave recovery process
 - 0.23.0
 - Use Volume Driver exclusively between containerizers due to unmounts
 
 ---
-# Installing
-1. Install and Test **rexray** (or others)
-2. Install and Test **dvdcli**
-3. Install **Mesos dvdi module**
-4. Send Marathon Job
 
-
----
-
-# Next Steps
+# Feedback
+- Mountpoint coming back into task
+- Credential management
