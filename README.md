@@ -153,21 +153,15 @@ See the `/var/log/mesos/mesos-slave.INFO` log for details.  Troubleshooting via 
 To simplify the process of assembling and configuring a build environment for the docker volume driver isolator, a Docker image is offered.
 
 ### Build using our Docker Module Build Image
-`git clone https://github.com/cantbewong/docker-volume-driver-isolator`
-`cd docker-volume-driver-isolator`
-`docker run -ti -v pathtoisolator/isolator emccode/mesos-build-dvdi-modules:0.23.0`
+`docker run -ti -v path_to_mesos-module-dvdi/isolator emccode/mesos-module-dvdi-dev:0.23.0`
 
-### (optional) Build a custom Mesos Build Image
 
-`docker build -t name/mesos-build-module-dev:0.23.0 - < Dockerfile-mesos-build-module-dev`
+### (optional) Build a Mesos Build Docker Image
 
-`docker build -t name/mesos-build-module-dvdi:0.23.0 - < Dockerfile-mesos-build-module-dvdi`
-
+`docker build -t name/mesos-modules-dev:0.23.0 - < Dockerfile-mesos-modules-dev`
 
 ### (optional) Build a custom Mesos DVDI Module Build Image
-
-`git clone https://github.com/cantbewong/docker-volume-driver-isolator && cd docker-volume-driver-isolator`  
-`docker run -ti -v path-to-docker-volume-driver-isolator:/isolator name/dvdi-modules:0.23.0`
+`docker build -t name/mesos-module-dvdi-dev:0.23.0 - < Dockerfile-mesos-module-dvdi-dev`
 
 Following this use this docker image to do a module build as shown in the first step.
 
