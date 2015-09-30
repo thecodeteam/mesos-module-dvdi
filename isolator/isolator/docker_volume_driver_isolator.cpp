@@ -100,10 +100,6 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
   // However there is also a possibility that a task
   // terminated while we were gone, leaving a "orphanned" mount.
   // If any of these exist, they should be unmounted.
-  // Recovery will only be viable if the directory is aligned to
-  // the slave root mount point. Otherwise we have no means to
-  // determine which mount is associated with which task, because the
-  // environment for the task is not available to us.
   // Sometime after the 0.23.0 release a ContainerState will be provided
   // instead of the current ExecutorRunState.
 
@@ -150,31 +146,84 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
   }
 
   // legacyMounts now contains only "orphan" mounts whose task is gone
-  for( auto iter : legacyMounts) {
-    const std::string volumeDriver = iter.second->deviceDriverName;
-    const std::string volumeName = iter.second->volumeName;
-    LOG(INFO) << volumeDriver << "/" << volumeName
-              << " is an orphan mount found on recover(), it will be unmounted";
-    if (system(NULL)) { // Is a command processor available?
-      const Try<std::string>& cmd = strings::format("%s %s%s %s%s",
-              DVDCLI_UNMOUNT_CMD,
-              VOL_DRIVER_CMD_OPTION, volumeDriver,
-              VOL_NAME_CMD_OPTION, volumeName);
-      if (cmd.isError()) {
-        return Failure("recover() failed to format an unmount command" + cmd.error() );
-      }
-      int i = system(cmd.get().c_str());
-      if( 0 != i ) {
-        LOG(WARNING) << cmd.get() << " failed to execute during recover(), "
-   	                 << " continuing on the assumption this volume was manually unmounted previously";
-      }
-    } else {
-      return Failure("recover() failed to acquire a command processor for unmount" );
-    }
+  for (auto iter : legacyMounts) {
+	if (!unmount(*(iter.second), "recover()")) {
+      return Failure("recover() failed during unmount attempt");
+	}
   }
 
   // TODO flush the infos structure to disk
   return Nothing();
+}
+
+// Attempts to unmount specified external mount, returns true on success
+bool DockerVolumeDriverIsolatorProcess::unmount(
+    const ExternalMount& em,
+    const std::string&   callerLabelForLogging )
+{
+    LOG(INFO) << em << " is being unmounted on " << callerLabelForLogging;
+    if (system(NULL)) { // Is a command processor available?
+      const Try<std::string>& cmd = strings::format("%s %s%s %s%s",
+              DVDCLI_UNMOUNT_CMD,
+              VOL_DRIVER_CMD_OPTION, em.deviceDriverName,
+              VOL_NAME_CMD_OPTION, em.volumeName);
+      if (cmd.isError()) {
+        LOG(ERROR) << "failed to format an unmount command on " << callerLabelForLogging;
+        return false;
+      }
+      int i = system(cmd.get().c_str());
+      if( 0 != i ) {
+        LOG(WARNING) << cmd.get() << " failed to execute on " << callerLabelForLogging
+   	                 << ", continuing on the assumption this volume was manually unmounted previously";
+      }
+    } else {
+      LOG(ERROR) << "failed to acquire a command processor for unmount on " << callerLabelForLogging;
+      return false;
+    }
+    return true;
+}
+
+// Attempts to mount specified external mount, returns true on success
+bool DockerVolumeDriverIsolatorProcess::mount(
+    const ExternalMount& em,
+    const std::string&   callerLabelForLogging)
+{
+    LOG(INFO) << em << " is being mounted on  " << callerLabelForLogging;
+    const std::string volumeDriver = em.deviceDriverName;
+    const std::string volumeName = em.volumeName;
+
+    // parse and format volume options
+    std::stringstream ss(em.mountOptions);
+    std::string opts;
+
+    while( ss.good() )
+    {
+      string substr;
+      getline( ss, substr, ',' );
+      opts = opts + " " + VOL_OPTS_CMD_OPTION + substr;
+    }
+
+    if (system(NULL)) { // Is a command processor available?
+      const Try<std::string>& cmd = strings::format("%s %s%s %s%s %s",
+            DVDCLI_MOUNT_CMD,
+            VOL_DRIVER_CMD_OPTION, volumeDriver,
+  	        VOL_NAME_CMD_OPTION, volumeName,
+  	        opts);
+      if (cmd.isError()) {
+        LOG(ERROR) << "failed to format an mount command on " << callerLabelForLogging;
+        return false;
+      }
+      int i = system(cmd.get().c_str());
+      if( 0 != i ) {
+        LOG(ERROR) << cmd.get() << " failed to execute on " << callerLabelForLogging
+   	                 << ", continuing on the assumption this volume was manually unmounted previously";
+        return false;
+      }
+    } else {
+      LOG(ERROR) << "failed to acquire a command processor for unmount on " << callerLabelForLogging;
+      return false;
+    }
+    return true;
 }
 
 // Prepare runs BEFORE a task is started
@@ -309,44 +358,25 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
   // The goal is we mount either ALL or NONE.
   std::vector<process::Owned<ExternalMount>> successfulExternalMounts;
   for (auto const iter : unconnectedExternalMounts) {
-    LOG(INFO) << *iter << " is being mounted on prepare()";
-    const std::string volumeDriver = iter.get()->deviceDriverName;
-    const std::string volumeName = iter.get()->volumeName;
-
-    // parse and format volume options
-    std::stringstream ss(iter.get()->mountOptions);
-    std::string opts;
-
-    while( ss.good() )
-    {
-      string substr;
-      getline( ss, substr, ',' );
-      opts = opts + " " + VOL_OPTS_CMD_OPTION + substr;
-    }
-
-    if (system(NULL)) { // Is a command processor available?
-      const Try<std::string>& cmd = strings::format("%s %s%s %s%s %s",
-            DVDCLI_MOUNT_CMD,
-            VOL_DRIVER_CMD_OPTION, volumeDriver,
-  	        VOL_NAME_CMD_OPTION, volumeName,
-  	        opts);
-      if (cmd.isError()) {
-    	  LOG(ERROR) << "prepare() failed to format an mount command" + cmd.error();
-    	  break;
-      }
-      int i = system(cmd.get().c_str());
-      if( 0 != i ) {
-        LOG(ERROR) << cmd.get() << " failed to execute during prepare()";
-   	    break;
-      }
+    if (mount(*iter, "prepare()")) {
+      successfulExternalMounts.push_back(iter);
     } else {
-      LOG(ERROR) << "prepare() failed to acquire a command processor for mount";
-      break;
+      // once any mount attempt fails, give up on whole list
+      // and attempt to undo the mounts we already made
+      for (auto const unmountme : successfulExternalMounts) {
+        if (unmount(*unmountme, "prepare()-recovery after failed mount")) {
+        	break;
+        }
+      }
+      return Failure("prepare() failed during mount attempt");
     }
   }
 
-  // TODO CHECK FOR EROR DURING MOUNT AND UNDO
-  // TODO update infos
+  // note: infos has a record for each mount asscoiated with this container
+  // even if the mount is also used by another container
+  for (auto const iter : requestedExternalMounts) {
+    infos.put(containerId, iter);
+  }
   // TODO flush infos to disk
 
   return None();
@@ -413,32 +443,13 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::cleanup(
     }
     if (1 == mountCount) {
       // this container has the was the only, or last, user of this mount
-      // unmount
-      const std::string volumeDriver = iter.get()->deviceDriverName;
-      const std::string volumeName = iter.get()->volumeName;
-      LOG(INFO) << volumeDriver << "/"
-                << volumeName
-                << " is being unmounted on cleanup()";
-   	  if (system(NULL)) { // Is a command processor available?
-        const Try<std::string>& cmd = strings::format("%s %s%s %s%s",
-                 DVDCLI_UNMOUNT_CMD,
-                 VOL_DRIVER_CMD_OPTION, volumeDriver,
-                 VOL_NAME_CMD_OPTION, volumeName);
-   	    if (cmd.isError()) {
-   	      return Failure("cleanup() failed to format an unmount command" + cmd.error() );
-        }
-        int i = system(cmd.get().c_str());
-        if( 0 != i ) {
-          LOG(WARNING) << cmd.get() << " failed to execute during cleanup(), "
-       	               << " continuing on the assumption this volume was manually unmounted previously";
-   	    }
-      } else {
-   	    return Failure("cleanup() failed to acquire a command processor for unmount" );
+      if (!unmount(*iter, "cleanup()")) {
+        return Failure("cleanup() failed during unmount attempt");
       }
     }
   }
 
-  // remove this container's records from infos
+  // remove all this container's mounts from infos
   infos.remove(containerId);
 
   // TODO flush infos to disk

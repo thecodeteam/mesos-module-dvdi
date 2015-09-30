@@ -58,9 +58,6 @@ public:
   // TODO This interface will change post 0.23.0 to pass a list of
   // of container states which will assist in recovery,
   // when this is available, code should use it.
-  // TBD how determine volume mounts and device mounts
-  //   rexray can report volume and device mount but
-  //   unclear whether volume or device mount is related to mesos or not.
   virtual process::Future<Nothing> recover(
     const std::list<mesos::slave::ExecutorRunState>& states,
     const hashset<ContainerID>& orphans);
@@ -72,7 +69,7 @@ public:
   // 1. get volume identifier (from ENVIRONMENT from task in ExecutorInfo
   //     VOL_NAME_ENV_VAR_NAME is defined below
   //     This is volume name, not ID.
-  //     Warning, name collisions on name can be trecherous.
+  //     Warning, name collisions on name can be treacherous.
   //     For now a simple string value is presumed, will need to enhance to
   //     support a JSON array to allow multiple volume mounts per task.
   // 2. get desired volume driver (volumedriver=) from ENVIRONMENT from task in ExecutorInfo
@@ -80,7 +77,7 @@ public:
   // 3. Check for other pre-existing users of the mount.
   // 4. Only if we are first user, make dvdcli mount call <volumename>
   //    Mount location is fixed, based on volume name (/var/lib/rexray/volumes/
-  //    this call is synchrounous, and returns 0 if success
+  //    this call is synchronous, and returns 0 if success
   //    actual call is defined below in DVDCLI_MOUNT_CMD
   // 5. Add entry to hashmap that contains root mountpath indexed by ContainerId
   virtual process::Future<Option<CommandInfo>> prepare(
@@ -110,15 +107,12 @@ public:
 
   // will (possibly) unmount here
   // 1. Get mount root path by looking up based on ContainerId
-  // 2. Verify that it is a rexray mount.
-  // 3. Start counting tasks using this same mount. Quit counted after count == 2
-  // 4. If count was exactly 1, Unmount the volume
+  // 2. Start counting tasks using this same mount. Quit counted after count == 2
+  // 3. If count was exactly 1, Unmount the volume
   //     dvdcli unmount defined in DVDCLI_UNMOUNT_CMD below
-  // 5. Remove the listing for this task's mount from hashmap
+  // 4. Remove the listing for this task's mount from hashmap
   virtual process::Future<Nothing> cleanup(
       const ContainerID& containerId);
-
-  //friend std::ostream& operator<<(std::ostream& os, const ExternalMount& em);
 
 private:
   DockerVolumeDriverIsolatorProcess(const Parameters& parameters);
@@ -163,6 +157,16 @@ private:
     << '(' << em.mountOptions << ")";
     return os;
   }
+
+  // Attempts to unmount specified external mount, returns true on success
+  bool unmount(
+      const ExternalMount& em,
+      const std::string&   callerLabelForLogging );
+
+  // Attempts to mount specified external mount, returns true on success
+  bool mount(
+      const ExternalMount& em,
+      const std::string&   callerLabelForLogging);
 
   typedef multihashmap<
     ContainerID, process::Owned<ExternalMount>> containermountmap;
