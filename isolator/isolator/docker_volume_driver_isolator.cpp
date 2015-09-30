@@ -22,6 +22,7 @@
 
 #include <fstream>
 #include <list>
+#include <array>
 
 #include <mesos/mesos.hpp>
 #include <mesos/module.hpp>
@@ -49,6 +50,7 @@ using namespace process;
 using std::list;
 using std::set;
 using std::string;
+using std::array;
 
 using namespace mesos;
 using namespace mesos::slave;
@@ -188,20 +190,13 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
   LOG(INFO) << "Preparing external storage for container: "
             << stringify(containerId);
 
-  std::string volumeName;
-  std::string volumeDriver;
-  std::string volumeOpts;
   JSON::Object environment;
   JSON::Array jsonVariables;
-  // TODO remove these temporary Volume 2 variables when we implement json array
-  // parsing, using protocol buffer, instead of brute force second env variable
-  std::string volumeName2;
-  std::string volumeDriver2;
-  std::string volumeOpts2;
 
-  std::string deviceDriverNames[10];
-  std::string volumeNames[10];
-  std::string mountOptions[10];
+  static const size_t ARRAY_SIZE = 10;
+  std::array<std::string, ARRAY_SIZE> deviceDriverNames;
+  std::array<std::string, ARRAY_SIZE> volumeNames;
+  std::array<std::string, ARRAY_SIZE> mountOptions;
 
   // get things we need from task's environment in ExecutoInfo
   if (!executorInfo.command().has_environment()) {
@@ -229,110 +224,132 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
         if (isdigit(digit)) {
           size_t index = std::atoi(variable.name().substr(prefixLength).c_str());
           if (index !=0) {
+            volumeNames[index] = variable.value();
+          }
+        }
+      }
+    } else if (strings::startsWith(variable.name(), VOL_DRIVER_ENV_VAR_NAME)) {
+      const size_t prefixLength = VOL_DRIVER_ENV_VAR_NAME.length();
+      if (variable.name().length() == prefixLength) {
+    	deviceDriverNames[0] = variable.value();
+      } else if (variable.name().length() == (prefixLength+1)) {
+        char digit = variable.name().data()[prefixLength];
+        if (isdigit(digit)) {
+          size_t index = std::atoi(variable.name().substr(prefixLength).c_str());
+          if (index !=0) {
             deviceDriverNames[index] = variable.value();
           }
         }
       }
-    }
-
-
-//      case str2int(JSON_VOLS_ENV_VAR_NAME):
-//		JSON::Value jsonVolArray = JSON::parse(variable.value());
-//        break;
-//    }
-
-    /*
-    if (variable.name() == VOL_NAME_ENV_VAR_NAME) {
-   	  volumeName = variable.value();
-    }
-
-    if (variable.name() == VOL_DRIVER_ENV_VAR_NAME) {
-   	  volumeDriver = variable.value();
-    }
-
-    if (variable.name() == VOL_OPTS_ENV_VAR_NAME) {
-      volumeOpts = variable.value();
-    }
-
-    if (variable.name() == JSON_VOLS_ENV_VAR_NAME) {
+    } else if (strings::startsWith(variable.name(), VOL_OPTS_ENV_VAR_NAME)) {
+      const size_t prefixLength = VOL_OPTS_ENV_VAR_NAME.length();
+      if (variable.name().length() == prefixLength) {
+    	deviceDriverNames[0] = variable.value();
+      } else if (variable.name().length() == (prefixLength+1)) {
+        char digit = variable.name().data()[prefixLength];
+        if (isdigit(digit)) {
+          size_t index = std::atoi(variable.name().substr(prefixLength).c_str());
+          if (index !=0) {
+            mountOptions[index] = variable.value();
+          }
+        }
+      }
+    } else if (variable.name() == JSON_VOLS_ENV_VAR_NAME) {
       JSON::Value jsonVolArray = JSON::parse(variable.value());
     }
-    */
   }
   // TODO: json environment is not used yet, but will be when multi mount support is completed
   environment.values["variables"] = jsonVariables;
 
-  if (volumeName.empty()) {
-    LOG(WARNING) << "No " << VOL_NAME_ENV_VAR_NAME << " environment variable specified for container ";
-    return None();
-  }
-
-  if (volumeDriver.empty()) {
-    volumeDriver = VOL_DRIVER_DEFAULT;
-  }
-
-  process::Owned<ExternalMount> mount1(new ExternalMount(volumeDriver, volumeName, volumeOpts));
-  // We save a list of mounts here
+  // requestedExternalMounts is all mounts requested by container
   std::vector<process::Owned<ExternalMount>> requestedExternalMounts;
-  requestedExternalMounts.push_back(mount1);
+  // unconnectedExternalMounts is the subset of those not already in use by another container
+  std::vector<process::Owned<ExternalMount>> unconnectedExternalMounts;
 
-  // check for optional second volume
-  if (!volumeName2.empty()) {
-    if (volumeDriver2.empty()) {
-      volumeDriver2 = VOL_DRIVER_DEFAULT;
+  for (size_t i = 0; i < volumeNames.size(); i++) {
+    if (volumeNames[i].empty()) {
+      continue;
     }
-    process::Owned<ExternalMount> mount2(new ExternalMount(volumeDriver2, volumeName2, volumeOpts2));
-    requestedExternalMounts.push_back(mount1);
-  }
+    if (deviceDriverNames[i].empty()) {
+      deviceDriverNames[i] = VOL_DRIVER_DEFAULT;
+    }
+    process::Owned<ExternalMount> mount(new ExternalMount(volumeNames[i], deviceDriverNames[i], mountOptions[i]));
+    // check for duplicates in environment
+    bool duplicateInEnv = false;
+    for (auto ent : requestedExternalMounts) {
+      if (ent.get()->getExternalMountId() ==
+             mount.get()->getExternalMountId()) {
+        duplicateInEnv = true;
+        break;
+      }
+    }
+    if (duplicateInEnv) {
+      LOG(INFO) << "duplicate mount request(" << *mount << ") in environment will be ignored";
+      continue;
+    }
+    requestedExternalMounts.push_back(mount);
 
-
-
-
-  // parse and format volume options
-  std::stringstream ss(volumeOpts);
-  std::string opts;
-
-  while( ss.good() )
-  {
-    string substr;
-    getline( ss, substr, ',' );
-    opts = opts + " " + VOL_OPTS_CMD_OPTION + substr;
-  }
-
-  // we have a volume name, now check if we are the first task to request a mount
-  const std::string fullpath = REXRAY_MOUNT_PREFIX + volumeName;
-  bool mountInUse = false;
-
-  for(auto const ent : infos) {
-	for (auto &ExternalMount : ent.second.get()->externalMounts) {
-
-	}
-    if (ent.second->mountrootpath == fullpath) {
-      mountInUse = true;
-      break; // another container is already associated with this mount,
+    // now check if another container is already using this same mount
+    bool mountInUse = false;
+    for (auto const ent : infos) {
+      if (ent.second.get()->getExternalMountId() ==
+             mount.get()->getExternalMountId()) {
+        mountInUse = true;
+        LOG(INFO) << "requested mount(" << *mount << ") is already mounted by another container";
+        break;
+      }
+  	}
+    if (!mountInUse) {
+      unconnectedExternalMounts.push_back(mount);
     }
   }
 
-  if (!mountInUse) {
+  // As we connect mounts we will build a list of successful mounts
+  // We need this because, if there is a failure, we need to unmount these.
+  // The goal is we mount either ALL or NONE.
+  std::vector<process::Owned<ExternalMount>> successfulExternalMounts;
+  for (auto const iter : unconnectedExternalMounts) {
+    LOG(INFO) << *iter << " is being mounted on prepare()";
+    const std::string volumeDriver = iter.get()->deviceDriverName;
+    const std::string volumeName = iter.get()->volumeName;
+
+    // parse and format volume options
+    std::stringstream ss(iter.get()->mountOptions);
+    std::string opts;
+
+    while( ss.good() )
+    {
+      string substr;
+      getline( ss, substr, ',' );
+      opts = opts + " " + VOL_OPTS_CMD_OPTION + substr;
+    }
+
     if (system(NULL)) { // Is a command processor available?
       const Try<std::string>& cmd = strings::format("%s %s%s %s%s %s",
-          DVDCLI_MOUNT_CMD,
-		  VOL_DRIVER_CMD_OPTION, volumeDriver,
-		  VOL_NAME_CMD_OPTION, volumeName,
-		  opts);
+            DVDCLI_MOUNT_CMD,
+            VOL_DRIVER_CMD_OPTION, volumeDriver,
+  	        VOL_NAME_CMD_OPTION, volumeName,
+  	        opts);
       if (cmd.isError()) {
-            return Failure("prepare() failed to format a mount command from env vars" + cmd.error() );
+    	  LOG(ERROR) << "prepare() failed to format an mount command" + cmd.error();
+    	  break;
       }
       int i = system(cmd.get().c_str());
       if( 0 != i ) {
-        return Failure("prepare() failed to execute mount command " + cmd.get() );
+        LOG(ERROR) << cmd.get() << " failed to execute during prepare()";
+   	    break;
       }
+    } else {
+      LOG(ERROR) << "prepare() failed to acquire a command processor for mount";
+      break;
     }
   }
 
-  infos.put(containerId, Owned<Info>(new Info(fullpath)));
-  return None();
+  // TODO CHECK FOR EROR DURING MOUNT AND UNDO
+  // TODO update infos
+  // TODO flush infos to disk
 
+  return None();
 }
 
 Future<Limitation> DockerVolumeDriverIsolatorProcess::watch(
@@ -421,14 +438,10 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::cleanup(
     }
   }
 
-  // remove this records from infos
+  // remove this container's records from infos
   infos.remove(containerId);
 
   // TODO flush infos to disk
-
-  // For a normally exited container, we take its info pointer off the
-  // hashmap infos before using the helper function to clean it up.
-  infos.erase(containerId);
 
   return Nothing();
 

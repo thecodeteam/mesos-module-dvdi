@@ -19,6 +19,7 @@
 
 #ifndef SRC_DOCKER_VOLUME_DRIVER_ISOLATOR_HPP_
 #define SRC_DOCKER_VOLUME_DRIVER_ISOLATOR_HPP_
+#include <iostream>
 #include <boost/functional/hash.hpp>
 #include <boost/algorithm/string.hpp>
 #include <mesos/mesos.hpp>
@@ -117,6 +118,8 @@ public:
   virtual process::Future<Nothing> cleanup(
       const ContainerID& containerId);
 
+  //friend std::ostream& operator<<(std::ostream& os, const ExternalMount& em);
+
 private:
   DockerVolumeDriverIsolatorProcess(const Parameters& parameters);
 
@@ -152,6 +155,14 @@ private:
 	const std::string volumeName;
     const std::string mountOptions;
   };
+
+  // overload '<<' operator to allow rendering of ExternalMount
+  friend inline std::ostream& operator<<(std::ostream& os, const ExternalMount& em)
+  {
+    os << em.deviceDriverName << '/' << em.volumeName
+    << '(' << em.mountOptions << ")";
+    return os;
+  }
 
   typedef multihashmap<
     ContainerID, process::Owned<ExternalMount>> containermountmap;
