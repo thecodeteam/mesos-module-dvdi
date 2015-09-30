@@ -255,7 +255,7 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
         }
       }
     } else if (variable.name() == JSON_VOLS_ENV_VAR_NAME) {
-      JSON::Value jsonVolArray = JSON::parse(variable.value());
+      //JSON::Value jsonVolArray = JSON::parse(variable.value());
     }
   }
   // TODO: json environment is not used yet, but will be when multi mount support is completed
