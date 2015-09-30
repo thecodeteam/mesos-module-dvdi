@@ -259,7 +259,7 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
   {
     string substr;
     getline( ss, substr, ',' );
-    opts = opts + VOL_OPTS_CMD_OPTION + substr;
+    opts = opts + " " + VOL_OPTS_CMD_OPTION + substr;
   }
 
   // we have a volume name, now check if we are the first task to request a mount
