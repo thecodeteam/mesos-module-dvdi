@@ -17,16 +17,9 @@
  * limitations under the License.
  */
 
-// TODO Code Complete, but untested
 // process() should be used instead of system(), but desire for synchronous dvdcli mount/unmount
 // could make this complex.
-// Currently only handles one mount per container, infos structure and logic will need enhancement
-// to handle (n) mounts per containerized task.
-// The recover() function only provides ContainerId  and not the original environment which contains
-// the mounted volume name. This is problematic. Currently assumes that mount path has been placed in
-// the executor work directory, which I am speculating is confurable as a work-around.
-// If the executor work directory is not set to the dvdcli mount path, then recover won't clean up
-// orphaned mounts, but it should do no harm.infos
+
 #include <fstream>
 #include <list>
 
@@ -47,6 +40,7 @@ using namespace mesos::internal;
 #include <stout/foreach.hpp>
 #include <stout/os/ls.hpp>
 #include <stout/format.hpp>
+#include <stout/strings.hpp>
 
 #include <sstream>
 
@@ -111,86 +105,79 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
   // Sometime after the 0.23.0 release a ContainerState will be provided
   // instead of the current ExecutorRunState.
 
- // TODO (when multi driver, multiple volume support implemented)
- //    1. Deduce a list of all mounts from all volume drivers
- //    2. Use this to embellish cleanup of orphanned mounts
+  // TODO read container mounts from filesystem
+  containermountmap originalContainerMounts;
 
-  hashset<std::string> inUseDirs;
+  // allMounts is list of all mounts in use at according to recovered file
+  // inUseMounts is list of all mounts deduced to be still in use now
+  // both maps starts empty, we will iterate to populate
+  typedef hashmap<
+    ExternalMountID, process::Owned<ExternalMount>> externalmountmap;
+  externalmountmap legacyMounts;
+  externalmountmap inUseMounts;
+
+  // populate legacyMounts with all mounts at time file was written
+  // note: some of the tasks using these may be gone now
+  for (auto& elem : originalContainerMounts) {
+    // elem->second is ExternalMount,
+    legacyMounts.put(elem.second.get()->getExternalMountId(), elem.second);
+  }
 
   foreach (const ExecutorRunState& state, states) {
-
-    infos.put(state.id, Owned<Info>(new Info(state.directory)));
-    inUseDirs.insert(state.directory) ;
-    LOG(INFO) << "running container found on recover()";
-    LOG(INFO) << "directory is (" << state.directory << ")";
-  }
-  // infos now has a root mount directory for every task now running
-
-  //disable unmount in recover() until some issues are resolved
-/*
-  // Mounts from unknown orphans will be cleaned up now.
-  // Mounts from known orphans will be re-inserted into the infos hashmap
-  set<std::string> unknownOrphans;
-
-  // Read currently mounted file systems from /proc/mounts.
-  Try<fs::MountTable> table = fs::MountTable::read("/proc/mounts");
-  if (table.isError()) {
-	  return Failure("Failed to read mount table: " + table.error());
+	if (originalContainerMounts.contains(state.id)) {
+      // we found a task that is still running and has mounts
+      LOG(INFO) << "running container(" << state.id << ") found on recover()";
+      LOG(INFO) << "state.directory is (" << state.directory << ")";
+      std::list<process::Owned<ExternalMount>> mountsForContainer =
+          originalContainerMounts.get(state.id);
+      for (auto iter : mountsForContainer) {
+        // copy task element to rebuild infos
+        infos.put(state.id, iter);
+        ExternalMountID id = iter->getExternalMountId();
+        LOG(INFO) << "mount id is " << id;
+        inUseMounts.put(iter->getExternalMountId(), iter);
+      }
+	}
   }
 
-  std::list<std::string> mountlist;
-  foreach (const fs::MountTable::Entry& entry, table.get().entries) {
-      LOG(INFO) << "proc/mounts device is " << entry.fsname;
-      LOG(INFO) << "proc/mounts fsname is " << entry.dir;
-      if (entry.dir.length() <= REXRAY_MOUNT_PREFIX.length()) {
-    	continue; // too small to be a rexray mount
-      }
-      if (!strings::startsWith(entry.dir, REXRAY_MOUNT_PREFIX)) {
-    	  continue; // not a rexray mount
-      }
-      // we found a rexray mount
-      mountlist.push_back(entry.dir);
+  // infos has now been rebuilt for every task now running
+  // we will now reduce legacyMounts to only the mounts that should be removed
+  // we will do this by deleting the mounts still in use
+  for( auto iter : inUseMounts) {
+    legacyMounts.erase(iter.first);
   }
 
-// get a list of entries under the rexray mount point
-//  Try<std::list<std::string> > entries = os::ls(REXRAY_MOUNT_PREFIX);
-  if (!mountlist.empty()) {
-    LOG(INFO) << "rexray mounts found on recover()";
-
-    foreach (const std::string& entry, mountlist) {
-      bool dirInUse = false;
-
-      for(auto const ent : infos) {
-        if (entry == ent.second->mountrootpath.substr(REXRAY_MOUNT_PREFIX.length())) {
-          dirInUse = true;
-          break; // a known container is associated with this mount,
-        }
+  // legacyMounts now contains only "orphan" mounts whose task is gone
+  for( auto iter : legacyMounts) {
+    const std::string volumeDriver = iter.second->deviceDriverName;
+    const std::string volumeName = iter.second->volumeName;
+    LOG(INFO) << volumeDriver << "/" << volumeName
+              << " is an orphan mount found on recover(), it will be unmounted";
+    if (system(NULL)) { // Is a command processor available?
+      const Try<std::string>& cmd = strings::format("%s %s%s %s%s",
+              DVDCLI_UNMOUNT_CMD,
+              VOL_DRIVER_CMD_OPTION, volumeDriver,
+              VOL_NAME_CMD_OPTION, volumeName);
+      if (cmd.isError()) {
+        return Failure("recover() failed to format an unmount command" + cmd.error() );
       }
-      if (dirInUse) {
-      	continue;
+      int i = system(cmd.get().c_str());
+      if( 0 != i ) {
+        LOG(WARNING) << cmd.get() << " failed to execute during recover(), "
+   	                 << " continuing on the assumption this volume was manually unmounted previously";
       }
-      unknownOrphans.insert(entry);
-      LOG(INFO) << entry << "is an orphan rexray mount found on recover(), it will be unmounted";
+    } else {
+      return Failure("recover() failed to acquire a command processor for unmount" );
     }
   }
 
-  foreach (const std::string orphan, unknownOrphans) {
-     if (system(NULL)) { // Is a command processor available?
-	   std::string cmd = DVDCLI_UNMOUNT_CMD + orphan;
-       int i = system(cmd.c_str());
-       if( 0 != i ) {
-         return Failure("recover() failed to execute unmount command " + cmd );
-       }
-     }
-  }
-  */
+  // TODO flush the infos structure to disk
   return Nothing();
 }
 
 // Prepare runs BEFORE a task is started
 // will check if the volume is already mounted and if not,
 // will mount the volume
-
 Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
     const ContainerID& containerId,
     const ExecutorInfo& executorInfo,
@@ -206,9 +193,15 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
   std::string volumeOpts;
   JSON::Object environment;
   JSON::Array jsonVariables;
+  // TODO remove these temporary Volume 2 variables when we implement json array
+  // parsing, using protocol buffer, instead of brute force second env variable
+  std::string volumeName2;
+  std::string volumeDriver2;
+  std::string volumeOpts2;
 
-  // We may want to use the directory to indicate volumeName even though
-  // initial plan was environment variable. For now code will use environment
+  std::string deviceDriverNames[10];
+  std::string volumeNames[10];
+  std::string mountOptions[10];
 
   // get things we need from task's environment in ExecutoInfo
   if (!executorInfo.command().has_environment()) {
@@ -220,13 +213,35 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
 
   // iterate through the environment variables,
   // looking for the ones we need
-  foreach (const mesos:: Environment_Variable& variable,
+  foreach (const mesos::Environment_Variable& variable,
            executorInfo.command().environment().variables()) {
     JSON::Object variableObject;
     variableObject.values["name"] = variable.name();
     variableObject.values["value"] = variable.value();
     jsonVariables.values.push_back(variableObject);
 
+    if (strings::startsWith(variable.name(), VOL_NAME_ENV_VAR_NAME)) {
+      const size_t prefixLength = VOL_NAME_ENV_VAR_NAME.length();
+      if (variable.name().length() == prefixLength) {
+    	deviceDriverNames[0] = variable.value();
+      } else if (variable.name().length() == (prefixLength+1)) {
+        char digit = variable.name().data()[prefixLength];
+        if (isdigit(digit)) {
+          size_t index = std::atoi(variable.name().substr(prefixLength).c_str());
+          if (index !=0) {
+            deviceDriverNames[index] = variable.value();
+          }
+        }
+      }
+    }
+
+
+//      case str2int(JSON_VOLS_ENV_VAR_NAME):
+//		JSON::Value jsonVolArray = JSON::parse(variable.value());
+//        break;
+//    }
+
+    /*
     if (variable.name() == VOL_NAME_ENV_VAR_NAME) {
    	  volumeName = variable.value();
     }
@@ -238,6 +253,11 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
     if (variable.name() == VOL_OPTS_ENV_VAR_NAME) {
       volumeOpts = variable.value();
     }
+
+    if (variable.name() == JSON_VOLS_ENV_VAR_NAME) {
+      JSON::Value jsonVolArray = JSON::parse(variable.value());
+    }
+    */
   }
   // TODO: json environment is not used yet, but will be when multi mount support is completed
   environment.values["variables"] = jsonVariables;
@@ -250,6 +270,23 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
   if (volumeDriver.empty()) {
     volumeDriver = VOL_DRIVER_DEFAULT;
   }
+
+  process::Owned<ExternalMount> mount1(new ExternalMount(volumeDriver, volumeName, volumeOpts));
+  // We save a list of mounts here
+  std::vector<process::Owned<ExternalMount>> requestedExternalMounts;
+  requestedExternalMounts.push_back(mount1);
+
+  // check for optional second volume
+  if (!volumeName2.empty()) {
+    if (volumeDriver2.empty()) {
+      volumeDriver2 = VOL_DRIVER_DEFAULT;
+    }
+    process::Owned<ExternalMount> mount2(new ExternalMount(volumeDriver2, volumeName2, volumeOpts2));
+    requestedExternalMounts.push_back(mount1);
+  }
+
+
+
 
   // parse and format volume options
   std::stringstream ss(volumeOpts);
@@ -267,6 +304,9 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
   bool mountInUse = false;
 
   for(auto const ent : infos) {
+	for (auto &ExternalMount : ent.second.get()->externalMounts) {
+
+	}
     if (ent.second->mountrootpath == fullpath) {
       mountInUse = true;
       break; // another container is already associated with this mount,
@@ -339,43 +379,52 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::cleanup(
   if (!infos.contains(containerId)) {
     return Nothing();
   }
+  std::list<process::Owned<ExternalMount>> mountsList =
+      infos.get(containerId);
+  // mountList now contains all the mounts used by this container
 
-  string mountToRelease(infos[containerId]->mountrootpath);
-
-  if (mountToRelease.length() <= REXRAY_MOUNT_PREFIX.length()) {
-    // too small to include a valid rexray mount
-    return Nothing();
-  }
-
-  if (!strings::startsWith(mountToRelease, REXRAY_MOUNT_PREFIX)) {
-    // too small to include a valid rexray mount
-    return Nothing();
-  }
-
-  // we have now confirmed that this is a docker volume driver mount
-  // next check if we are the last and only task using this mount
-  // note: we should always find our own mount as we iterate
-  int mountcount = 0;
-  for(auto const ent : infos) {
-    if (ent.second->mountrootpath == mountToRelease) {
-      if( ++mountcount > 1) {
-     	  break; // as soon as we find two users we can quit
+  // note: it is possible that some of these mounts are also used by other tasks
+  for( auto iter : mountsList) {
+    size_t mountCount = 0;
+    for (auto& elem : infos) {
+      // elem.second is ExternalMount,
+      if (iter->getExternalMountId() == elem.second.get()->getExternalMountId()) {
+          if( ++mountCount > 1) {
+         	  break; // as soon as we find two users we can quit
+          }
+      }
+    }
+    if (1 == mountCount) {
+      // this container has the was the only, or last, user of this mount
+      // unmount
+      const std::string volumeDriver = iter.get()->deviceDriverName;
+      const std::string volumeName = iter.get()->volumeName;
+      LOG(INFO) << volumeDriver << "/"
+                << volumeName
+                << " is being unmounted on cleanup()";
+   	  if (system(NULL)) { // Is a command processor available?
+        const Try<std::string>& cmd = strings::format("%s %s%s %s%s",
+                 DVDCLI_UNMOUNT_CMD,
+                 VOL_DRIVER_CMD_OPTION, volumeDriver,
+                 VOL_NAME_CMD_OPTION, volumeName);
+   	    if (cmd.isError()) {
+   	      return Failure("cleanup() failed to format an unmount command" + cmd.error() );
+        }
+        int i = system(cmd.get().c_str());
+        if( 0 != i ) {
+          LOG(WARNING) << cmd.get() << " failed to execute during cleanup(), "
+       	               << " continuing on the assumption this volume was manually unmounted previously";
+   	    }
+      } else {
+   	    return Failure("cleanup() failed to acquire a command processor for unmount" );
       }
     }
   }
 
-  if (mountcount == 1) {
-    // we were the only or last user of the mount
-    const std::string volumeName = mountToRelease.substr(REXRAY_MOUNT_PREFIX.length());
+  // remove this records from infos
+  infos.remove(containerId);
 
-    if (system(NULL)) { // Is a command processor available?
-	  std::string cmd = DVDCLI_UNMOUNT_CMD + volumeName;
-      int i = system(cmd.c_str());
-      if( 0 != i ) {
-        return Failure("Failed to execute unmount command " + cmd );
-      }
-    }
-  }
+  // TODO flush infos to disk
 
   // For a normally exited container, we take its info pointer off the
   // hashmap infos before using the helper function to clean it up.

@@ -19,6 +19,8 @@
 
 #ifndef SRC_DOCKER_VOLUME_DRIVER_ISOLATOR_HPP_
 #define SRC_DOCKER_VOLUME_DRIVER_ISOLATOR_HPP_
+#include <boost/functional/hash.hpp>
+#include <boost/algorithm/string.hpp>
 #include <mesos/mesos.hpp>
 #include <mesos/slave/isolator.hpp>
 #include <slave/flags.hpp>
@@ -26,12 +28,21 @@
 #include <process/owned.hpp>
 #include <process/process.hpp>
 
-#include <stout/hashmap.hpp>
+#include <stout/multihashmap.hpp>
 #include <stout/protobuf.hpp>
 #include <stout/try.hpp>
 
 namespace mesos {
 namespace slave {
+
+constexpr char    VOL_NAME_ENV_VAR_NAME[]   = "DVDI_VOLUME_NAME";
+constexpr char    VOL_DRIVER_ENV_VAR_NAME[] = "DVDI_VOLUME_DRIVER";
+constexpr char    VOL_OPTS_ENV_VAR_NAME[]   = "DVDI_VOLUME_OPTS";
+// TODO: Remove these constants when we implement json array parsing from environment
+constexpr char    VOL_NAME_ENV_VAR_NAME2[]  = "DVDI_VOLUME_NAME2";
+constexpr char    VOL_DRIVER_ENV_VAR_NAME2[]= "DVDI_VOLUME_DRIVER2";
+constexpr char    VOL_OPTS_ENV_VAR_NAME2[]  = "DVDI_VOLUME_OPTS2";
+constexpr char    JSON_VOLS_ENV_VAR_NAME[]  = "DVDI_VOLS_JSON_ARRAY";
 
 class DockerVolumeDriverIsolatorProcess: public mesos::slave::IsolatorProcess {
 public:
@@ -111,29 +122,54 @@ private:
 
   const Parameters parameters;
 
-  struct Info
+  typedef size_t ExternalMountID;
+
+  struct ExternalMount
   {
-    // TODO, save volume driver name in infos, when support for recover with multiple driver is implemented
-    explicit Info(const std::string& _mountrootpath)
-      : mountrootpath(_mountrootpath) {}
+    explicit ExternalMount(
+        const std::string& _deviceDriverName,
+        const std::string& _volumeName,
+		const std::string& _mountOptions)
+      : deviceDriverName(_deviceDriverName), volumeName(_volumeName), mountOptions(_mountOptions) {}
+
+    bool operator ==(const ExternalMount& other) {
+    	return getExternalMountId() == other.getExternalMountId();
+    }
+
+    ExternalMountID getExternalMountId(void) const {
+        size_t seed = 0;
+        std::string s1(boost::to_lower_copy(deviceDriverName));
+        std::string s2(boost::to_lower_copy(volumeName));
+        boost::hash_combine(seed, s1);
+        boost::hash_combine(seed, s2);
+        return seed;
+    }
 
     // We save the full root path of any mounted device here.
-    const std::string mountrootpath;
+    // note device driver name and volume name are not case sensitive,
+    // but are stored as submitted in constructor
+    const std::string deviceDriverName;
+	const std::string volumeName;
+    const std::string mountOptions;
   };
 
-  hashmap<ContainerID, process::Owned<Info>> infos;
+  typedef multihashmap<
+    ContainerID, process::Owned<ExternalMount>> containermountmap;
+  containermountmap infos;
 
   const std::string REXRAY_MOUNT_PREFIX       = "/var/lib/rexray/volumes/";
   const std::string DVDCLI_MOUNT_CMD          = "/usr/bin/dvdcli mount";
-  const std::string DVDCLI_UNMOUNT_CMD        = "/usr/bin/dvdcli unmount --volumedriver=rexray --volumename=";
-  const std::string VOL_NAME_ENV_VAR_NAME     = "DVDI_VOLUME_NAME";
-  const std::string VOL_DRIVER_ENV_VAR_NAME   = "DVDI_VOLUME_DRIVER";
-  const std::string VOL_OPTS_ENV_VAR_NAME     = "DVDI_VOLUME_OPTS";
+  const std::string DVDCLI_UNMOUNT_CMD        = "/usr/bin/dvdcli unmount";
+
   const std::string VOL_NAME_CMD_OPTION       = "--volumename=";
   const std::string VOL_DRIVER_CMD_OPTION     = "--volumedriver=";
   const std::string VOL_OPTS_CMD_OPTION       = "--volumeopts=";
   const std::string VOL_DRIVER_DEFAULT        = "rexray";
 
+  const std::string VOL_NAME_ENV_VAR_NAME     = "DVDI_VOLUME_NAME";
+  const std::string VOL_DRIVER_ENV_VAR_NAME   = "DVDI_VOLUME_DRIVER";
+  const std::string VOL_OPTS_ENV_VAR_NAME     = "DVDI_VOLUME_OPTS";
+  const std::string JSON_VOLS_ENV_VAR_NAME    = "DVDI_VOLS_JSON_ARRAY";
 };
 
 } /* namespace slave */
