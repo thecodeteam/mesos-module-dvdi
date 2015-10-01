@@ -151,7 +151,7 @@ infos.clear();
 // copy task element to rebuild infos
 mesos::ContainerID* cid = new ContainerID();
 process::Owned<ExternalMount> m(
-    new ExternalMount("abc123", "rexray", ""));
+    new ExternalMount("rexray", "abc123",""));
 
 infos.put(*cid, m);
 std::ofstream infosout1("/tmp/json-out-test.json");
@@ -196,7 +196,7 @@ delete cid;
     std::string volumeName = (*iter).get("volumename").get<string>();
     std::string mountOptions = (*iter).get("mountoptions").get<string>();
     process::Owned<ExternalMount> mount(
-        new ExternalMount(volumeName, deviceDriverName, mountOptions));
+        new ExternalMount(deviceDriverName, volumeName, mountOptions));
     originalContainerMounts.put(containerid, mount);
   }
 
@@ -446,7 +446,7 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
       deviceDriverNames[i] = VOL_DRIVER_DEFAULT;
     }
     process::Owned<ExternalMount> mount(
-        new ExternalMount(volumeNames[i], deviceDriverNames[i], mountOptions[i]));
+        new ExternalMount(deviceDriverNames[i], volumeNames[i], mountOptions[i]));
     // check for duplicates in environment
     bool duplicateInEnv = false;
     for (auto ent : requestedExternalMounts) {
