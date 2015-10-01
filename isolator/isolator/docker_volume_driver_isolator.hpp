@@ -183,6 +183,8 @@ private:
   const std::string VOL_DRIVER_ENV_VAR_NAME   = "DVDI_VOLUME_DRIVER";
   const std::string VOL_OPTS_ENV_VAR_NAME     = "DVDI_VOLUME_OPTS";
   const std::string JSON_VOLS_ENV_VAR_NAME    = "DVDI_VOLS_JSON_ARRAY";
+
+  const std::string DVDI_MOUNTLIST_FILENAME   = "/tmp/dvdimounts.json";
 };
 
 } /* namespace slave */

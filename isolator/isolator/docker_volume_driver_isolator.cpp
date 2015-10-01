@@ -104,8 +104,27 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
   // Sometime after the 0.23.0 release a ContainerState will be provided
   // instead of the current ExecutorRunState.
 
-  // TODO read container mounts from filesystem
-  containermountmap originalContainerMounts;
+  // note: this multihashmap is similar to the infos multihashmap but note that the
+  // key is an std::string instead of a ContainerID.
+  // This is because some of the ContainerIDs present when it was recorded may now be gone
+  // The key is a string rendering of the ContainerID but not a ContainerID
+  multihashmap<std::string, process::Owned<ExternalMount>> originalContainerMounts;
+
+  // read container mounts from filesystem
+  std::ifstream ifs(DVDI_MOUNTLIST_FILENAME);
+  picojson::value v;
+  ifs >> v;
+  picojson::array list = v.get("mounts").get<picojson::array>();
+
+  for (picojson::array::iterator iter = list.begin(); iter != list.end(); ++iter) {
+    std::string containerid = (*iter).get("containerid").get<string>();
+    std::string deviceDriverName = (*iter).get("containerid").get<string>();
+    std::string volumeName = (*iter).get("containerid").get<string>();
+    std::string mountOptions = (*iter).get("containerid").get<string>();
+    process::Owned<ExternalMount> mount(new ExternalMount(volumeName, deviceDriverName, mountOptions));
+    originalContainerMounts.put(containerid, mount);
+  }
+
 
   // allMounts is list of all mounts in use at according to recovered file
   // inUseMounts is list of all mounts deduced to be still in use now
@@ -123,12 +142,12 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
   }
 
   foreach (const ExecutorRunState& state, states) {
-	if (originalContainerMounts.contains(state.id)) {
+	if (originalContainerMounts.contains(state.id.value())) {
       // we found a task that is still running and has mounts
       LOG(INFO) << "running container(" << state.id << ") found on recover()";
       LOG(INFO) << "state.directory is (" << state.directory << ")";
       std::list<process::Owned<ExternalMount>> mountsForContainer =
-          originalContainerMounts.get(state.id);
+          originalContainerMounts.get(state.id.value());
       for (auto iter : mountsForContainer) {
         // copy task element to rebuild infos
         infos.put(state.id, iter);
@@ -154,7 +173,7 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
   }
 
   // flush the infos structure to disk
-  std::ofstream infosout("/tmp/dvdimounts.json");
+  std::ofstream infosout(DVDI_MOUNTLIST_FILENAME);
   dumpInfos(infosout);
   infosout.flush();
   infosout.close();
@@ -401,7 +420,7 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
     infos.put(containerId, iter);
   }
   // flush infos to disk
-  std::ofstream infosout("/tmp/dvdimounts.json");
+  std::ofstream infosout(DVDI_MOUNTLIST_FILENAME);
   dumpInfos(infosout);
   infosout.flush();
   infosout.close();
@@ -480,7 +499,7 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::cleanup(
   infos.remove(containerId);
 
   // flush infos to disk
-  std::ofstream infosout("/tmp/dvdimounts.json");
+  std::ofstream infosout(DVDI_MOUNTLIST_FILENAME);
   dumpInfos(infosout);
   infosout.flush();
   infosout.close();
