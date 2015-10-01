@@ -153,7 +153,12 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
 	}
   }
 
-  // TODO flush the infos structure to disk
+  // flush the infos structure to disk
+  std::ofstream infosout("/tmp/dvdimounts.json");
+  dumpInfos(infosout);
+  infosout.flush();
+  infosout.close();
+
   return Nothing();
 }
 
@@ -395,9 +400,11 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
   for (auto const iter : requestedExternalMounts) {
     infos.put(containerId, iter);
   }
-  // TODO flush infos to disk
+  // flush infos to disk
   std::ofstream infosout("/tmp/dvdimounts.json");
   dumpInfos(infosout);
+  infosout.flush();
+  infosout.close();
 
   return None();
 }
@@ -472,7 +479,11 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::cleanup(
   // remove all this container's mounts from infos
   infos.remove(containerId);
 
-  // TODO flush infos to disk
+  // flush infos to disk
+  std::ofstream infosout("/tmp/dvdimounts.json");
+  dumpInfos(infosout);
+  infosout.flush();
+  infosout.close();
 
   return Nothing();
 
