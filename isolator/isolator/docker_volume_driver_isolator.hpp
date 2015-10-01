@@ -39,10 +39,6 @@ namespace slave {
 constexpr char    VOL_NAME_ENV_VAR_NAME[]   = "DVDI_VOLUME_NAME";
 constexpr char    VOL_DRIVER_ENV_VAR_NAME[] = "DVDI_VOLUME_DRIVER";
 constexpr char    VOL_OPTS_ENV_VAR_NAME[]   = "DVDI_VOLUME_OPTS";
-// TODO: Remove these constants when we implement json array parsing from environment
-constexpr char    VOL_NAME_ENV_VAR_NAME2[]  = "DVDI_VOLUME_NAME2";
-constexpr char    VOL_DRIVER_ENV_VAR_NAME2[]= "DVDI_VOLUME_DRIVER2";
-constexpr char    VOL_OPTS_ENV_VAR_NAME2[]  = "DVDI_VOLUME_OPTS2";
 constexpr char    JSON_VOLS_ENV_VAR_NAME[]  = "DVDI_VOLS_JSON_ARRAY";
 
 class DockerVolumeDriverIsolatorProcess: public mesos::slave::IsolatorProcess {
@@ -167,6 +163,8 @@ private:
   bool mount(
       const ExternalMount& em,
       const std::string&   callerLabelForLogging);
+
+  std::ostream& dumpInfos(std::ostream& out);
 
   typedef multihashmap<
     ContainerID, process::Owned<ExternalMount>> containermountmap;

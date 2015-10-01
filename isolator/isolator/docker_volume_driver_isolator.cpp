@@ -23,6 +23,7 @@
 #include <fstream>
 #include <list>
 #include <array>
+#include <iostream>
 
 #include <mesos/mesos.hpp>
 #include <mesos/module.hpp>
@@ -226,6 +227,23 @@ bool DockerVolumeDriverIsolatorProcess::mount(
     return true;
 }
 
+std::ostream& DockerVolumeDriverIsolatorProcess::dumpInfos(std::ostream& out)
+{
+  out << "{\"mounts\": [";
+  std::string delimiter = "";
+  for (auto const ent : infos) {
+    out << delimiter << "{";
+    out << "\"containerid\": "  << ent.first.SerializeAsString();
+    out << "\"volumedriver\": " << ent.second.get()->deviceDriverName;
+    out << "\"volumename\": "   << ent.second.get()->volumeName;
+    out << "\"mountoptions\": " << ent.second.get()->mountOptions;
+    out << "}";
+    delimiter = ",\n";
+  }
+  out << "]}";
+  return out;
+}
+
 // Prepare runs BEFORE a task is started
 // will check if the volume is already mounted and if not,
 // will mount the volume
@@ -378,6 +396,8 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
     infos.put(containerId, iter);
   }
   // TODO flush infos to disk
+  std::ofstream infosout("/tmp/dvdimounts.json");
+  dumpInfos(infosout);
 
   return None();
 }
