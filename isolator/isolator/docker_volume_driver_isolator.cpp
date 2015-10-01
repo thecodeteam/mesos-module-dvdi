@@ -17,8 +17,8 @@
  * limitations under the License.
  */
 
-// process() should be used instead of system(), but desire for synchronous dvdcli mount/unmount
-// could make this complex.
+// TODO: process() should be used instead of system(), but desire for
+// synchronous dvdcli mount/unmount could make this complex.
 
 #include <fstream>
 #include <list>
@@ -118,10 +118,11 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
 
   for (picojson::array::iterator iter = list.begin(); iter != list.end(); ++iter) {
     std::string containerid = (*iter).get("containerid").get<string>();
-    std::string deviceDriverName = (*iter).get("containerid").get<string>();
-    std::string volumeName = (*iter).get("containerid").get<string>();
-    std::string mountOptions = (*iter).get("containerid").get<string>();
-    process::Owned<ExternalMount> mount(new ExternalMount(volumeName, deviceDriverName, mountOptions));
+    std::string deviceDriverName = (*iter).get("volumedriver").get<string>();
+    std::string volumeName = (*iter).get("volumename").get<string>();
+    std::string mountOptions = (*iter).get("mountoptions").get<string>();
+    process::Owned<ExternalMount> mount(
+        new ExternalMount(volumeName, deviceDriverName, mountOptions));
     originalContainerMounts.put(containerid, mount);
   }
 
@@ -142,7 +143,7 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
   }
 
   foreach (const ExecutorRunState& state, states) {
-	if (originalContainerMounts.contains(state.id.value())) {
+    if (originalContainerMounts.contains(state.id.value())) {
       // we found a task that is still running and has mounts
       LOG(INFO) << "running container(" << state.id << ") found on recover()";
       LOG(INFO) << "state.directory is (" << state.directory << ")";
@@ -167,9 +168,9 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
 
   // legacyMounts now contains only "orphan" mounts whose task is gone
   for (auto iter : legacyMounts) {
-	if (!unmount(*(iter.second), "recover()")) {
+    if (!unmount(*(iter.second), "recover()")) {
       return Failure("recover() failed during unmount attempt");
-	}
+    }
   }
 
   // flush the infos structure to disk
@@ -235,17 +236,20 @@ bool DockerVolumeDriverIsolatorProcess::mount(
   	        VOL_NAME_CMD_OPTION, volumeName,
   	        opts);
       if (cmd.isError()) {
-        LOG(ERROR) << "failed to format an mount command on " << callerLabelForLogging;
+        LOG(ERROR) << "failed to format an mount command on "
+                   << callerLabelForLogging;
         return false;
       }
       int i = system(cmd.get().c_str());
       if( 0 != i ) {
-        LOG(ERROR) << cmd.get() << " failed to execute on " << callerLabelForLogging
-   	                 << ", continuing on the assumption this volume was manually unmounted previously";
+        LOG(ERROR) << cmd.get() << " failed to execute on "
+                   << callerLabelForLogging
+                   << ", continuing on the assumption this volume was manually unmounted previously";
         return false;
       }
     } else {
-      LOG(ERROR) << "failed to acquire a command processor for unmount on " << callerLabelForLogging;
+      LOG(ERROR) << "failed to acquire a command processor for unmount on "
+                 << callerLabelForLogging;
       return false;
     }
     return true;
@@ -349,12 +353,13 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
       //JSON::Value jsonVolArray = JSON::parse(variable.value());
     }
   }
-  // TODO: json environment is not used yet, but will be when multi mount support is completed
+  // TODO: json environment is not used yet
   environment.values["variables"] = jsonVariables;
 
   // requestedExternalMounts is all mounts requested by container
   std::vector<process::Owned<ExternalMount>> requestedExternalMounts;
-  // unconnectedExternalMounts is the subset of those not already in use by another container
+  // unconnectedExternalMounts is the subset of those not already
+  // in use by another container
   std::vector<process::Owned<ExternalMount>> unconnectedExternalMounts;
 
   for (size_t i = 0; i < volumeNames.size(); i++) {
@@ -364,7 +369,8 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
     if (deviceDriverNames[i].empty()) {
       deviceDriverNames[i] = VOL_DRIVER_DEFAULT;
     }
-    process::Owned<ExternalMount> mount(new ExternalMount(volumeNames[i], deviceDriverNames[i], mountOptions[i]));
+    process::Owned<ExternalMount> mount(
+        new ExternalMount(volumeNames[i], deviceDriverNames[i], mountOptions[i]));
     // check for duplicates in environment
     bool duplicateInEnv = false;
     for (auto ent : requestedExternalMounts) {
@@ -375,7 +381,8 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
       }
     }
     if (duplicateInEnv) {
-      LOG(INFO) << "duplicate mount request(" << *mount << ") in environment will be ignored";
+      LOG(INFO) << "duplicate mount request(" << *mount
+                << ") in environment will be ignored";
       continue;
     }
     requestedExternalMounts.push_back(mount);
@@ -386,7 +393,8 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
       if (ent.second.get()->getExternalMountId() ==
              mount.get()->getExternalMountId()) {
         mountInUse = true;
-        LOG(INFO) << "requested mount(" << *mount << ") is already mounted by another container";
+        LOG(INFO) << "requested mount(" << *mount
+                  << ") is already mounted by another container";
         break;
       }
   	}
