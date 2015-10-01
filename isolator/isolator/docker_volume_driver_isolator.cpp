@@ -288,7 +288,7 @@ bool DockerVolumeDriverIsolatorProcess::mount(
     const ExternalMount& em,
     const std::string&   callerLabelForLogging)
 {
-    LOG(INFO) << em << " is being mounted on  " << callerLabelForLogging;
+    LOG(INFO) << em << " is being mounted on " << callerLabelForLogging;
     const std::string volumeDriver = em.deviceDriverName;
     const std::string volumeName = em.volumeName;
 
@@ -342,7 +342,7 @@ std::ostream& DockerVolumeDriverIsolatorProcess::dumpInfos(std::ostream& out)
     out << "}";
     delimiter = ",\n";
   }
-  out << "\n]}";
+  out << "\n]}\n";
   return out;
 }
 
@@ -397,7 +397,7 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
           }
         }
       }
-      LOG(INFO) << "external volume name (" << variable.value() << "parsed from environment";
+      LOG(INFO) << "external volume name (" << variable.value() << ") parsed from environment";
     } else if (strings::startsWith(variable.name(), VOL_DRIVER_ENV_VAR_NAME)) {
       const size_t prefixLength = VOL_DRIVER_ENV_VAR_NAME.length();
       if (variable.name().length() == prefixLength) {
