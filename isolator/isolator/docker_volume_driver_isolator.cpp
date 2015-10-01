@@ -387,7 +387,7 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
     if (strings::startsWith(variable.name(), VOL_NAME_ENV_VAR_NAME)) {
       const size_t prefixLength = VOL_NAME_ENV_VAR_NAME.length();
       if (variable.name().length() == prefixLength) {
-    	deviceDriverNames[0] = variable.value();
+        volumeNames[0] = variable.value();
       } else if (variable.name().length() == (prefixLength+1)) {
         char digit = variable.name().data()[prefixLength];
         if (isdigit(digit)) {
@@ -397,6 +397,7 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
           }
         }
       }
+      LOG(INFO) << "external volume name (" << variable.value() << "parsed from environment";
     } else if (strings::startsWith(variable.name(), VOL_DRIVER_ENV_VAR_NAME)) {
       const size_t prefixLength = VOL_DRIVER_ENV_VAR_NAME.length();
       if (variable.name().length() == prefixLength) {
@@ -413,7 +414,7 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
     } else if (strings::startsWith(variable.name(), VOL_OPTS_ENV_VAR_NAME)) {
       const size_t prefixLength = VOL_OPTS_ENV_VAR_NAME.length();
       if (variable.name().length() == prefixLength) {
-    	deviceDriverNames[0] = variable.value();
+        mountOptions[0] = variable.value();
       } else if (variable.name().length() == (prefixLength+1)) {
         char digit = variable.name().data()[prefixLength];
         if (isdigit(digit)) {
@@ -440,6 +441,7 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
     if (volumeNames[i].empty()) {
       continue;
     }
+    LOG(INFO) << "validating mount" << volumeNames[i];
     if (deviceDriverNames[i].empty()) {
       deviceDriverNames[i] = VOL_DRIVER_DEFAULT;
     }
