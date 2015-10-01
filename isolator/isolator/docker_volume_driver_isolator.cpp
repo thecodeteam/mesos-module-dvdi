@@ -89,6 +89,80 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
     const list<ExecutorRunState>& states,
     const hashset<ContainerID>& orphans)
 {
+  LOG(INFO) << "DockerVolumeDriverIsolatorProcess recover() was called";
+
+  //temporary disable recover because it is broken, to enable test of other new code
+	return Nothing();
+  // temporary mount json test TODO remove later
+/*
+expected input
+{"mounts": [
+{
+"containerid": "dgsja",
+"volumedriver": "rexray",
+"volumename:": "abc123456789",
+"mountoptions": "size=5,iops=150,volumetype=io1,newfstype=xfs,overwritefs=true"
+},
+{
+"containerid": "dgsja",
+"volumedriver": "rexray",
+"volumename:": "test1234567890",
+"mountoptions": ""
+}
+]}
+ */
+  {
+const std::string MOUNT_JSON_TEST =
+"{\"mounts\": [\n{\n\"containerid\": \"dgsja\",\n\"volumedriver\": \"rexray\",\n\"volumename:\": \"abc123456789\",\n\"mountoptions\": \"size=5,iops=150,volumetype=io1,newfstype=xfs,overwritefs=true\"\n},\n{\n\"containerid\": \"dgsja\",\n\"volumedriver\": \"rexray\",\n\"volumename:\": \"test1234567890\",\n\"mountoptions\": \"\"\n}\n]}";
+
+picojson::value v;
+const char *s = MOUNT_JSON_TEST.c_str();
+string err = picojson::parse(v, s, s +strlen(s) );
+if (! err.empty()) {
+	LOG(INFO) << "picojson parse error:" << err;
+}
+// check if the type of the value is "object"
+if (! v.is<picojson::object>()) {
+	LOG(INFO) << "JSON is not an object" << std::endl;
+	return Nothing();
+}
+
+// obtain a const reference to the map, and print the contents
+const picojson::value::object& obj = v.get<picojson::object>();
+for (picojson::value::object::const_iterator i = obj.begin();
+     i != obj.end();
+     ++i) {
+	LOG(INFO) << i->first << ": " << i->second.to_str() ;
+}
+picojson::array list = v.get("mounts").get<picojson::array>();
+
+  for (picojson::array::iterator iter = list.begin(); iter != list.end(); ++iter) {
+    std::string containerid = (*iter).get("containerid").get<string>();
+    std::string deviceDriverName = (*iter).get("volumedriver").get<string>();
+    std::string volumeName = (*iter).get("volumename").get<string>();
+    std::string mountOptions = (*iter).get("mountoptions").get<string>();
+    LOG(INFO) << "containerid:" << containerid;
+    LOG(INFO) << "deviceDriverName:" << deviceDriverName;
+    LOG(INFO) << "volumeName:" << volumeName;
+    LOG(INFO) << "mountOptions:" << mountOptions;
+  }
+
+infos.clear();
+// copy task element to rebuild infos
+mesos::ContainerID* cid = new ContainerID();
+process::Owned<ExternalMount> m(
+    new ExternalMount("abc123", "rexray", ""));
+
+infos.put(*cid, m);
+std::ofstream infosout1("/tmp/json-out-test.json");
+dumpInfos(infosout1);
+infosout1.flush();
+infosout1.close();
+infos.clear();
+delete cid;
+
+} // end of test code to be removed
+
   // Slave recovery is a feature of Mesos that allows task/executors
   // to keep running if a slave process goes down, AND
   // allows the slave process to reconnect with already running
@@ -257,18 +331,18 @@ bool DockerVolumeDriverIsolatorProcess::mount(
 
 std::ostream& DockerVolumeDriverIsolatorProcess::dumpInfos(std::ostream& out)
 {
-  out << "{\"mounts\": [";
+  out << "{\"mounts\": [\n";
   std::string delimiter = "";
   for (auto const ent : infos) {
-    out << delimiter << "{";
-    out << "\"containerid\": "  << ent.first.SerializeAsString();
-    out << "\"volumedriver\": " << ent.second.get()->deviceDriverName;
-    out << "\"volumename\": "   << ent.second.get()->volumeName;
-    out << "\"mountoptions\": " << ent.second.get()->mountOptions;
+    out << delimiter << "{\n";
+    //out << "\"containerid\": \""  << ent.first.SerializeAsString() << "\"\n";
+    out << "\"volumedriver\": \"" << ent.second.get()->deviceDriverName << "\"\n";
+    out << "\"volumename\": \""   << ent.second.get()->volumeName << "\"\n";
+    out << "\"mountoptions\": \"" << ent.second.get()->mountOptions << "\"\n";
     out << "}";
     delimiter = ",\n";
   }
-  out << "]}";
+  out << "\n]}";
   return out;
 }
 
