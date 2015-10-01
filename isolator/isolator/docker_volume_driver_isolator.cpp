@@ -91,8 +91,6 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
 {
   LOG(INFO) << "DockerVolumeDriverIsolatorProcess recover() was called";
 
-  //temporary disable recover because it is broken, to enable test of other new code
-	return Nothing();
   // temporary mount json test TODO remove later
 /*
 expected input
@@ -111,15 +109,25 @@ expected input
 }
 ]}
  */
+
+	  /*
+	   *
   {
 const std::string MOUNT_JSON_TEST =
-"{\"mounts\": [\n{\n\"containerid\": \"dgsja\",\n\"volumedriver\": \"rexray\",\n\"volumename:\": \"abc123456789\",\n\"mountoptions\": \"size=5,iops=150,volumetype=io1,newfstype=xfs,overwritefs=true\"\n},\n{\n\"containerid\": \"dgsja\",\n\"volumedriver\": \"rexray\",\n\"volumename:\": \"test1234567890\",\n\"mountoptions\": \"\"\n}\n]}";
+"{\"mounts\": [\n{\n\"containerid\": \"82f13449-8e01-4285-aaf1-31aeec139bf8\",\n\"volumedriver\": \"rexray\",\n\"notvolumename:\": \"abc123456789\",\n\"mountoptions\": \"size=5,iops=150,volumetype=io1,newfstype=xfs,overwritefs=true\",\n\"volumename\": \"abc123456789\"\n},\n{\n\"containerid\": \"82f13449-8e01-4285-aaf1-31aeec139bf8\",\n\"volumedriver\": \"rexray\",\n\"notvolumename:\": \"test1234567890\",\n\"mountoptions\": \"\",\n\"volumename\": \"xx\"\n}\n]}";
+*/
+
+/* TODO remove this test code for picojson parsing
+	  const std::string MOUNT_JSON_TEST =
+	  "{\"mounts\": [\n\n]}\n";
+
 
 picojson::value v;
 const char *s = MOUNT_JSON_TEST.c_str();
 string err = picojson::parse(v, s, s +strlen(s) );
 if (! err.empty()) {
 	LOG(INFO) << "picojson parse error:" << err;
+	return Nothing();
 }
 // check if the type of the value is "object"
 if (! v.is<picojson::object>()) {
@@ -127,41 +135,41 @@ if (! v.is<picojson::object>()) {
 	return Nothing();
 }
 
-// obtain a const reference to the map, and print the contents
-const picojson::value::object& obj = v.get<picojson::object>();
-for (picojson::value::object::const_iterator i = obj.begin();
-     i != obj.end();
-     ++i) {
-	LOG(INFO) << i->first << ": " << i->second.to_str() ;
-}
-picojson::array list = v.get("mounts").get<picojson::array>();
+picojson::array mountlist = v.get("mounts").get<picojson::array>();
+for (picojson::array::iterator iter = mountlist.begin(); iter != mountlist.end(); ++iter) {
+    LOG(INFO) << "{";
+	LOG(INFO) << "(*iter):" << (*iter).to_str() << (*iter).serialize();
+	LOG(INFO) << "(*iter) contains containerid:" << (*iter).contains("containerid");
+	LOG(INFO) << "(*iter) contains volumename:" << (*iter).contains("volumename");
+	LOG(INFO) << "(*iter) contains volumedriver:" << (*iter).contains("volumedriver");
 
-  for (picojson::array::iterator iter = list.begin(); iter != list.end(); ++iter) {
-    std::string containerid = (*iter).get("containerid").get<string>();
-    std::string deviceDriverName = (*iter).get("volumedriver").get<string>();
-    std::string volumeName = (*iter).get("volumename").get<string>();
-    std::string mountOptions = (*iter).get("mountoptions").get<string>();
+	LOG(INFO) << "(*iter) contains mountoptions:" << (*iter).contains("mountoptions");
+
+	LOG(INFO) << "(*iter).get(\"containerid\") is object:" << (*iter).get("containerid").is<picojson::object>();
+	LOG(INFO) << "(*iter).get(\"containerid\"):" << (*iter).get("containerid").to_str() << (*iter).get("containerid").serialize();
+	LOG(INFO) << "(*iter).get(\"containerid\").get<string>():" << (*iter).get("containerid").get<string>().c_str();
+
+	LOG(INFO) << "(*iter).get(\"containerid\").is<string>():" << (*iter).get("containerid").is<string>();
+	LOG(INFO) << "(*iter).get(\"containerid\").is<std::string>():" << (*iter).get("containerid").is<std::string>();
+
+    std::string containerid((*iter).get("containerid").get<string>().c_str());
     LOG(INFO) << "containerid:" << containerid;
-    LOG(INFO) << "deviceDriverName:" << deviceDriverName;
-    LOG(INFO) << "volumeName:" << volumeName;
+
+    std::string mountOptions = (*iter).get("mountoptions").get<string>().c_str();
     LOG(INFO) << "mountOptions:" << mountOptions;
-  }
 
-infos.clear();
-// copy task element to rebuild infos
-mesos::ContainerID* cid = new ContainerID();
-process::Owned<ExternalMount> m(
-    new ExternalMount("rexray", "abc123",""));
+    std::string deviceDriverName((*iter).get("volumedriver").get<string>().c_str());
+    LOG(INFO) << "deviceDriverName:" << deviceDriverName;
 
-infos.put(*cid, m);
-std::ofstream infosout1("/tmp/json-out-test.json");
-dumpInfos(infosout1);
-infosout1.flush();
-infosout1.close();
-infos.clear();
-delete cid;
+    std::string volumeName((*iter).get("volumename").get<string>().c_str());
+    LOG(INFO) << "volumeName:" << volumeName;
+    LOG(INFO) << "}";
+}
 
+LOG(INFO) << "test code complete in recover()";
+return Nothing();
 } // end of test code to be removed
+*/
 
   // Slave recovery is a feature of Mesos that allows task/executors
   // to keep running if a slave process goes down, AND
@@ -186,20 +194,68 @@ delete cid;
 
   // read container mounts from filesystem
   std::ifstream ifs(DVDI_MOUNTLIST_FILENAME);
-  picojson::value v;
-  ifs >> v;
-  picojson::array list = v.get("mounts").get<picojson::array>();
+  LOG(INFO) << "parsing mount json file(" << DVDI_MOUNTLIST_FILENAME
+            << ") in recover()";
 
-  for (picojson::array::iterator iter = list.begin(); iter != list.end(); ++iter) {
-    std::string containerid = (*iter).get("containerid").get<string>();
-    std::string deviceDriverName = (*iter).get("volumedriver").get<string>();
-    std::string volumeName = (*iter).get("volumename").get<string>();
-    std::string mountOptions = (*iter).get("mountoptions").get<string>();
-    process::Owned<ExternalMount> mount(
-        new ExternalMount(deviceDriverName, volumeName, mountOptions));
-    originalContainerMounts.put(containerid, mount);
+  std::istream_iterator<char> input(ifs);
+
+  picojson::value v;
+  std::string err;
+  input = picojson::parse(v, input, std::istream_iterator<char>(), &err);
+  if (! err.empty()) {
+  	LOG(INFO) << "picojson parse error:" << err;
+  	return Nothing();
   }
 
+  // check if the type of the value is "object"
+  if (! v.is<picojson::object>()) {
+  	LOG(INFO) << "parsed JSON is not an object";
+  	return Nothing();
+  }
+
+  size_t recoveredMountCount = 0;
+
+  picojson::array mountlist = v.get("mounts").get<picojson::array>();
+  for (picojson::array::iterator iter = mountlist.begin(); iter != mountlist.end(); ++iter) {
+    LOG(INFO) << "{";
+  	LOG(INFO) << "(*iter):" << (*iter).to_str() << (*iter).serialize();
+  	LOG(INFO) << "(*iter) contains containerid:" << (*iter).contains("containerid");
+  	LOG(INFO) << "(*iter) contains volumename:" << (*iter).contains("volumename");
+  	LOG(INFO) << "(*iter) contains volumedriver:" << (*iter).contains("volumedriver");
+
+  	LOG(INFO) << "(*iter) contains mountoptions:" << (*iter).contains("mountoptions");
+
+  	LOG(INFO) << "(*iter).get(\"containerid\") is object:" << (*iter).get("containerid").is<picojson::object>();
+  	LOG(INFO) << "(*iter).get(\"containerid\"):" << (*iter).get("containerid").to_str() << (*iter).get("containerid").serialize();
+  	LOG(INFO) << "(*iter).get(\"containerid\").get<string>():" << (*iter).get("containerid").get<string>().c_str();
+
+  	LOG(INFO) << "(*iter).get(\"containerid\").is<string>():" << (*iter).get("containerid").is<string>();
+  	LOG(INFO) << "(*iter).get(\"containerid\").is<std::string>():" << (*iter).get("containerid").is<std::string>();
+
+    std::string containerid((*iter).get("containerid").get<string>().c_str());
+    LOG(INFO) << "containerid:" << containerid;
+
+    std::string mountOptions = (*iter).get("mountoptions").get<string>().c_str();
+    LOG(INFO) << "mountOptions:" << mountOptions;
+
+    std::string deviceDriverName((*iter).get("volumedriver").get<string>().c_str());
+    LOG(INFO) << "deviceDriverName:" << deviceDriverName;
+
+    std::string volumeName((*iter).get("volumename").get<string>().c_str());
+    LOG(INFO) << "volumeName:" << volumeName;
+    LOG(INFO) << "}";
+
+    if (!containerid.empty() && !volumeName.empty()) {
+    	recoveredMountCount++;
+      process::Owned<ExternalMount> mount(
+          new ExternalMount(deviceDriverName, volumeName, mountOptions));
+      originalContainerMounts.put(containerid, mount);
+    }
+  }
+
+  LOG(INFO) << "parsed " << DVDI_MOUNTLIST_FILENAME
+            << " and found evidence of " << recoveredMountCount
+            << " previous active external mounts in recover()";
 
   // allMounts is list of all mounts in use at according to recovered file
   // inUseMounts is list of all mounts deduced to be still in use now
