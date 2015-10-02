@@ -164,11 +164,27 @@ private:
       const ExternalMount& em,
       const std::string&   callerLabelForLogging);
 
+  // Returns true if string contains at least one prohibited character
+  // as defined in the list below.
+  // This is intended as a tool to detect injection attack attempts.
+  bool containsProhibitedChars(const std::string& s) const;
+
   std::ostream& dumpInfos(std::ostream& out);
+
+
 
   typedef multihashmap<
     ContainerID, process::Owned<ExternalMount>> containermountmap;
   containermountmap infos;
+
+  // compiler had issues with the autodetecting size of following array,
+  // thus a constant is defined
+  static const size_t NUM_PROHIBITED = 26;
+  const char prohibitedchars[NUM_PROHIBITED]  = {
+  '%', '/', ':', ';', '\0',
+  '<', '>', '|', '`', '$', '\'',
+  '?', '^', '&', ' ', '{', '\"',
+  '}', '[', ']', '\n', '\t', '\v', '\b', '\r', '\\' };
 
   const std::string REXRAY_MOUNT_PREFIX       = "/var/lib/rexray/volumes/";
   const std::string DVDCLI_MOUNT_CMD          = "/usr/bin/dvdcli mount";

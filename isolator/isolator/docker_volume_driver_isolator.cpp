@@ -323,6 +323,11 @@ std::ostream& DockerVolumeDriverIsolatorProcess::dumpInfos(std::ostream& out)
   return out;
 }
 
+bool DockerVolumeDriverIsolatorProcess::containsProhibitedChars(const std::string& s) const
+{
+  return (string::npos != s.find_first_of(prohibitedchars, 0, NUM_PROHIBITED));
+}
+
 // Prepare runs BEFORE a task is started
 // will check if the volume is already mounted and if not,
 // will mount the volume
@@ -362,6 +367,11 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
     jsonVariables.values.push_back(variableObject);
 
     if (strings::startsWith(variable.name(), VOL_NAME_ENV_VAR_NAME)) {
+      if (containsProhibitedChars(variable.value())) {
+        LOG(ERROR) << "environment variable " << variable.name()
+            << " rejected because it's value contains prohibited characters";
+        return Failure("prepare() failed due to illegal environment variable");
+      }
       const size_t prefixLength = VOL_NAME_ENV_VAR_NAME.length();
       if (variable.name().length() == prefixLength) {
         volumeNames[0] = variable.value();
@@ -376,6 +386,11 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
       }
       LOG(INFO) << "external volume name (" << variable.value() << ") parsed from environment";
     } else if (strings::startsWith(variable.name(), VOL_DRIVER_ENV_VAR_NAME)) {
+      if (containsProhibitedChars(variable.value())) {
+        LOG(ERROR) << "environment variable " << variable.name()
+            << " rejected because it's value contains prohibited characters";
+        return Failure("prepare() failed due to illegal environment variable");
+      }
       const size_t prefixLength = VOL_DRIVER_ENV_VAR_NAME.length();
       if (variable.name().length() == prefixLength) {
     	deviceDriverNames[0] = variable.value();
@@ -389,6 +404,11 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
         }
       }
     } else if (strings::startsWith(variable.name(), VOL_OPTS_ENV_VAR_NAME)) {
+      if (containsProhibitedChars(variable.value())) {
+        LOG(ERROR) << "environment variable " << variable.name()
+            << " rejected because it's value contains prohibited characters";
+        return Failure("prepare() failed due to illegal environment variable");
+      }
       const size_t prefixLength = VOL_OPTS_ENV_VAR_NAME.length();
       if (variable.name().length() == prefixLength) {
         mountOptions[0] = variable.value();
