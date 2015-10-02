@@ -91,86 +91,6 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
 {
   LOG(INFO) << "DockerVolumeDriverIsolatorProcess recover() was called";
 
-  // temporary mount json test TODO remove later
-/*
-expected input
-{"mounts": [
-{
-"containerid": "dgsja",
-"volumedriver": "rexray",
-"volumename:": "abc123456789",
-"mountoptions": "size=5,iops=150,volumetype=io1,newfstype=xfs,overwritefs=true"
-},
-{
-"containerid": "dgsja",
-"volumedriver": "rexray",
-"volumename:": "test1234567890",
-"mountoptions": ""
-}
-]}
- */
-
-	  /*
-	   *
-  {
-const std::string MOUNT_JSON_TEST =
-"{\"mounts\": [\n{\n\"containerid\": \"82f13449-8e01-4285-aaf1-31aeec139bf8\",\n\"volumedriver\": \"rexray\",\n\"notvolumename:\": \"abc123456789\",\n\"mountoptions\": \"size=5,iops=150,volumetype=io1,newfstype=xfs,overwritefs=true\",\n\"volumename\": \"abc123456789\"\n},\n{\n\"containerid\": \"82f13449-8e01-4285-aaf1-31aeec139bf8\",\n\"volumedriver\": \"rexray\",\n\"notvolumename:\": \"test1234567890\",\n\"mountoptions\": \"\",\n\"volumename\": \"xx\"\n}\n]}";
-*/
-
-/* TODO remove this test code for picojson parsing
-	  const std::string MOUNT_JSON_TEST =
-	  "{\"mounts\": [\n\n]}\n";
-
-
-picojson::value v;
-const char *s = MOUNT_JSON_TEST.c_str();
-string err = picojson::parse(v, s, s +strlen(s) );
-if (! err.empty()) {
-	LOG(INFO) << "picojson parse error:" << err;
-	return Nothing();
-}
-// check if the type of the value is "object"
-if (! v.is<picojson::object>()) {
-	LOG(INFO) << "JSON is not an object" << std::endl;
-	return Nothing();
-}
-
-picojson::array mountlist = v.get("mounts").get<picojson::array>();
-for (picojson::array::iterator iter = mountlist.begin(); iter != mountlist.end(); ++iter) {
-    LOG(INFO) << "{";
-	LOG(INFO) << "(*iter):" << (*iter).to_str() << (*iter).serialize();
-	LOG(INFO) << "(*iter) contains containerid:" << (*iter).contains("containerid");
-	LOG(INFO) << "(*iter) contains volumename:" << (*iter).contains("volumename");
-	LOG(INFO) << "(*iter) contains volumedriver:" << (*iter).contains("volumedriver");
-
-	LOG(INFO) << "(*iter) contains mountoptions:" << (*iter).contains("mountoptions");
-
-	LOG(INFO) << "(*iter).get(\"containerid\") is object:" << (*iter).get("containerid").is<picojson::object>();
-	LOG(INFO) << "(*iter).get(\"containerid\"):" << (*iter).get("containerid").to_str() << (*iter).get("containerid").serialize();
-	LOG(INFO) << "(*iter).get(\"containerid\").get<string>():" << (*iter).get("containerid").get<string>().c_str();
-
-	LOG(INFO) << "(*iter).get(\"containerid\").is<string>():" << (*iter).get("containerid").is<string>();
-	LOG(INFO) << "(*iter).get(\"containerid\").is<std::string>():" << (*iter).get("containerid").is<std::string>();
-
-    std::string containerid((*iter).get("containerid").get<string>().c_str());
-    LOG(INFO) << "containerid:" << containerid;
-
-    std::string mountOptions = (*iter).get("mountoptions").get<string>().c_str();
-    LOG(INFO) << "mountOptions:" << mountOptions;
-
-    std::string deviceDriverName((*iter).get("volumedriver").get<string>().c_str());
-    LOG(INFO) << "deviceDriverName:" << deviceDriverName;
-
-    std::string volumeName((*iter).get("volumename").get<string>().c_str());
-    LOG(INFO) << "volumeName:" << volumeName;
-    LOG(INFO) << "}";
-}
-
-LOG(INFO) << "test code complete in recover()";
-return Nothing();
-} // end of test code to be removed
-*/
-
   // Slave recovery is a feature of Mesos that allows task/executors
   // to keep running if a slave process goes down, AND
   // allows the slave process to reconnect with already running
@@ -186,9 +106,9 @@ return Nothing();
   // Sometime after the 0.23.0 release a ContainerState will be provided
   // instead of the current ExecutorRunState.
 
-  // note: this multihashmap is similar to the infos multihashmap but note that the
-  // key is an std::string instead of a ContainerID.
-  // This is because some of the ContainerIDs present when it was recorded may now be gone
+  // originalContainerMounts is a multihashmap is similar to the infos multihashmap
+  // but note that the key is an std::string instead of a ContainerID.
+  // This is because some of the ContainerIDs present when it was recorded may now be gone.
   // The key is a string rendering of the ContainerID but not a ContainerID
   multihashmap<std::string, process::Owned<ExternalMount>> originalContainerMounts;
 
@@ -222,47 +142,45 @@ return Nothing();
   	LOG(INFO) << "(*iter) contains containerid:" << (*iter).contains("containerid");
   	LOG(INFO) << "(*iter) contains volumename:" << (*iter).contains("volumename");
   	LOG(INFO) << "(*iter) contains volumedriver:" << (*iter).contains("volumedriver");
-
   	LOG(INFO) << "(*iter) contains mountoptions:" << (*iter).contains("mountoptions");
 
-  	LOG(INFO) << "(*iter).get(\"containerid\") is object:" << (*iter).get("containerid").is<picojson::object>();
-  	LOG(INFO) << "(*iter).get(\"containerid\"):" << (*iter).get("containerid").to_str() << (*iter).get("containerid").serialize();
-  	LOG(INFO) << "(*iter).get(\"containerid\").get<string>():" << (*iter).get("containerid").get<string>().c_str();
+  	if ((*iter).contains("containerid") &&
+  	    (*iter).contains("volumename") &&
+        (*iter).contains("volumedriver") &&
+        (*iter).contains("mountoptions")) {
+      std::string containerid((*iter).get("containerid").get<string>().c_str());
+      LOG(INFO) << "containerid:" << containerid;
 
-  	LOG(INFO) << "(*iter).get(\"containerid\").is<string>():" << (*iter).get("containerid").is<string>();
-  	LOG(INFO) << "(*iter).get(\"containerid\").is<std::string>():" << (*iter).get("containerid").is<std::string>();
+      std::string mountOptions = (*iter).get("mountoptions").get<string>().c_str();
+      LOG(INFO) << "mountOptions:" << mountOptions;
 
-    std::string containerid((*iter).get("containerid").get<string>().c_str());
-    LOG(INFO) << "containerid:" << containerid;
+      std::string deviceDriverName((*iter).get("volumedriver").get<string>().c_str());
+      LOG(INFO) << "deviceDriverName:" << deviceDriverName;
 
-    std::string mountOptions = (*iter).get("mountoptions").get<string>().c_str();
-    LOG(INFO) << "mountOptions:" << mountOptions;
+      std::string volumeName((*iter).get("volumename").get<string>().c_str());
+      LOG(INFO) << "volumeName:" << volumeName;
+      LOG(INFO) << "}";
 
-    std::string deviceDriverName((*iter).get("volumedriver").get<string>().c_str());
-    LOG(INFO) << "deviceDriverName:" << deviceDriverName;
-
-    std::string volumeName((*iter).get("volumename").get<string>().c_str());
-    LOG(INFO) << "volumeName:" << volumeName;
-    LOG(INFO) << "}";
-
-    if (!containerid.empty() && !volumeName.empty()) {
+      if (!containerid.empty() && !volumeName.empty()) {
     	recoveredMountCount++;
-      process::Owned<ExternalMount> mount(
-          new ExternalMount(deviceDriverName, volumeName, mountOptions));
-      originalContainerMounts.put(containerid, mount);
-    }
+        process::Owned<ExternalMount> mount(
+            new ExternalMount(deviceDriverName, volumeName, mountOptions));
+        originalContainerMounts.put(containerid, mount);
+      }
+  	}
   }
 
   LOG(INFO) << "parsed " << DVDI_MOUNTLIST_FILENAME
             << " and found evidence of " << recoveredMountCount
             << " previous active external mounts in recover()";
 
-  // allMounts is list of all mounts in use at according to recovered file
-  // inUseMounts is list of all mounts deduced to be still in use now
   // both maps starts empty, we will iterate to populate
+
   typedef hashmap<
     ExternalMountID, process::Owned<ExternalMount>> externalmountmap;
+  // legacyMounts is a list of all mounts in use at according to recovered file
   externalmountmap legacyMounts;
+  // inUseMounts is a list of all mounts deduced to be still in use now
   externalmountmap inUseMounts;
 
   // populate legacyMounts with all mounts at time file was written
@@ -290,6 +208,12 @@ return Nothing();
   }
 
   // infos has now been rebuilt for every task now running
+  // flush the infos structure to disk
+  std::ofstream infosout(DVDI_MOUNTLIST_FILENAME);
+  dumpInfos(infosout);
+  infosout.flush();
+  infosout.close();
+
   // we will now reduce legacyMounts to only the mounts that should be removed
   // we will do this by deleting the mounts still in use
   for( auto iter : inUseMounts) {
@@ -297,22 +221,19 @@ return Nothing();
   }
 
   // legacyMounts now contains only "orphan" mounts whose task is gone
+  // we will attempt to unmount these
   for (auto iter : legacyMounts) {
     if (!unmount(*(iter.second), "recover()")) {
       return Failure("recover() failed during unmount attempt");
     }
   }
 
-  // flush the infos structure to disk
-  std::ofstream infosout(DVDI_MOUNTLIST_FILENAME);
-  dumpInfos(infosout);
-  infosout.flush();
-  infosout.close();
-
   return Nothing();
 }
 
 // Attempts to unmount specified external mount, returns true on success
+// Also returns true so long as DVDCLI is successfully invoked,
+// even if a non-zero return code occurs
 bool DockerVolumeDriverIsolatorProcess::unmount(
     const ExternalMount& em,
     const std::string&   callerLabelForLogging )
@@ -426,7 +347,7 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
   // get things we need from task's environment in ExecutoInfo
   if (!executorInfo.command().has_environment()) {
     // No environment means no external volume specification
-    // not an error, just nothing to do so return None.
+    // not an error, just nothing to do, so return None.
     LOG(INFO) << "No environment specified for container ";
     return None();
   }
@@ -605,8 +526,7 @@ process::Future<Nothing> DockerVolumeDriverIsolatorProcess::isolate(
 Future<Nothing> DockerVolumeDriverIsolatorProcess::cleanup(
     const ContainerID& containerId)
 {
-  // TODO (when multi driver, multiple volume support implemented)
-  //    1. Get driver name and volume list from enhance infos
+  //    1. Get driver name and volume list from infos
   //    2. Iterate list and perform unmounts
 
   if (!infos.contains(containerId)) {
@@ -628,7 +548,7 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::cleanup(
       }
     }
     if (1 == mountCount) {
-      // this container has the was the only, or last, user of this mount
+      // this container was the only, or last, user of this mount
       if (!unmount(*iter, "cleanup()")) {
         return Failure("cleanup() failed during unmount attempt");
       }
@@ -638,7 +558,7 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::cleanup(
   // remove all this container's mounts from infos
   infos.remove(containerId);
 
-  // flush infos to disk
+  // flush infos to disk, since we just changed it
   std::ofstream infosout(DVDI_MOUNTLIST_FILENAME);
   dumpInfos(infosout);
   infosout.flush();
