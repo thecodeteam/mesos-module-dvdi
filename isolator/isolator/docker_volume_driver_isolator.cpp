@@ -275,7 +275,7 @@ return Nothing();
   foreach (const ExecutorRunState& state, states) {
     if (originalContainerMounts.contains(state.id.value())) {
       // we found a task that is still running and has mounts
-      LOG(INFO) << "running container(" << state.id << ") found on recover()";
+      LOG(INFO) << "running container(" << state.id << ") re-identified on recover()";
       LOG(INFO) << "state.directory is (" << state.directory << ")";
       std::list<process::Owned<ExternalMount>> mountsForContainer =
           originalContainerMounts.get(state.id.value());
@@ -283,7 +283,7 @@ return Nothing();
         // copy task element to rebuild infos
         infos.put(state.id, iter);
         ExternalMountID id = iter->getExternalMountId();
-        LOG(INFO) << "mount id is " << id;
+        LOG(INFO) << "re-identified a preserved mount, id is " << id;
         inUseMounts.put(iter->getExternalMountId(), iter);
       }
 	}
@@ -391,9 +391,9 @@ std::ostream& DockerVolumeDriverIsolatorProcess::dumpInfos(std::ostream& out)
   std::string delimiter = "";
   for (auto const ent : infos) {
     out << delimiter << "{\n";
-    //out << "\"containerid\": \""  << ent.first.SerializeAsString() << "\"\n";
-    out << "\"volumedriver\": \"" << ent.second.get()->deviceDriverName << "\"\n";
-    out << "\"volumename\": \""   << ent.second.get()->volumeName << "\"\n";
+    out << "\"containerid\": \""  << ent.first << "\",\n";
+    out << "\"volumedriver\": \"" << ent.second.get()->deviceDriverName << "\",\n";
+    out << "\"volumename\": \""   << ent.second.get()->volumeName << "\",\n";
     out << "\"mountoptions\": \"" << ent.second.get()->mountOptions << "\"\n";
     out << "}";
     delimiter = ",\n";
