@@ -175,7 +175,7 @@ private:
   // compiler had issues with the autodetecting size of following array,
   // thus a constant is defined
   static constexpr size_t NUM_PROHIBITED = 26;
-  static constexpr char prohibitedchars[NUM_PROHIBITED]  = {
+  const char prohibitedchars[NUM_PROHIBITED]  = {
   '%', '/', ':', ';', '\0',
   '<', '>', '|', '`', '$', '\'',
   '?', '^', '&', ' ', '{', '\"',
