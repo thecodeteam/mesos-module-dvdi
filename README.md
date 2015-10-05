@@ -121,7 +121,11 @@ Copy/Update libmesos_dvdi_isolator-<version>.so on slave(s), typically in /usr/l
 # Examples
 
 ### Example Marathon Call
-The following will submit a job, which mounts a volume from an external storage platform
+The following will submit a job, which mounts a volume from an external storage platform.
+
+Up to nine additional volumes may be mounted by appending a digit (1-9)
+to the environment variable name. (e.g DVDI_VOLUME_NAME1=).
+
 ---
 
 `curl -i -H 'Content-Type: application/json' -d @test.json localhost:8080/v2/apps`
@@ -153,8 +157,17 @@ See the `/var/log/mesos/mesos-slave.INFO` log for details.  Troubleshooting via 
 To simplify the process of assembling and configuring a build environment for the docker volume driver isolator, a Docker image is offered.
 
 ### Build using our Docker Module Build Image
+git clone this repository to a Docker host.  
 `docker run -ti -v path_to_mesos-module-dvdi/isolator emccode/mesos-module-dvdi-dev:0.23.0`
-
+```
+cd /isolator
+./bootstrap
+mkdir build
+cd build/
+export LD_LIBRARY_PATH=/usr/local/lib
+../configure  --with-mesos-root=/mesos --with-mesos-build-dir=/mesos
+make
+```
 
 ### (optional) Build a Mesos Build Docker Image
 
@@ -173,4 +186,4 @@ Unless required by applicable law or agreed to in writing, software distributed 
 
 # Support
 -------
-Please file bugs and issues at the Github issues page. For more general discussions you can contact the EMC Code team at <a href="https://groups.google.com/forum/#!forum/emccode-users">Google Groups</a> or tagged with **EMC** on <a href="https://stackoverflow.com">Stackoverflow.com</a>. We also are available for real-time feedback on the EMC {code} Slack channel [here](http://community.emccode.com/).  The code and documentation are released with no warranties or SLAs and are intended to be supported through a community driven process.
+Please file bugs and issues at the Github issues page. For more general discussions you can contact the EMC Code team on the EMC {code} Slack channel [here](http://community.emccode.com/).  The code and documentation are released with no warranties or SLAs and are intended to be supported through a community driven process.
