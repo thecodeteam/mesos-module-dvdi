@@ -24,6 +24,7 @@
 #include <list>
 #include <array>
 #include <iostream>
+#include <sstream>
 
 #include <mesos/mesos.hpp>
 #include <mesos/module.hpp>
@@ -40,11 +41,9 @@
 #include "linux/fs.hpp"
 using namespace mesos::internal;
 #include <stout/foreach.hpp>
-#include <stout/os/ls.hpp>
+#include <stout/os.hpp>
 #include <stout/format.hpp>
 #include <stout/strings.hpp>
-
-#include <sstream>
 
 using namespace process;
 
@@ -61,6 +60,14 @@ using mesos::slave::Isolator;
 using mesos::slave::IsolatorProcess;
 using mesos::slave::Limitation;
 
+const char DockerVolumeDriverIsolatorProcess::prohibitedchars[NUM_PROHIBITED]  = {
+'%', '/', ':', ';', '\0',
+'<', '>', '|', '`', '$', '\'',
+'?', '^', '&', ' ', '{', '\"',
+'}', '[', ']', '\n', '\t', '\v', '\b', '\r', '\\' };
+
+std::string DockerVolumeDriverIsolatorProcess::mountJsonFilename;
+
 DockerVolumeDriverIsolatorProcess::DockerVolumeDriverIsolatorProcess(
 	const Parameters& _parameters)
   : parameters(_parameters) {}
@@ -76,6 +83,40 @@ Try<Isolator*> DockerVolumeDriverIsolatorProcess::create(const Parameters& param
   if (user.get() != "root") {
     return Error("DockerVolumeDriverIsolator requires root privileges");
   }
+
+  LOG(INFO) << "create() called";
+  mountJsonFilename = DVDI_MOUNTLIST_DEFAULT_DIR;
+
+  foreach (const Parameter& parameter, parameters.parameter()) {
+	if (parameter.key() == DVDI_WORKDIR_PARAM_NAME) {
+      LOG(INFO) << "parameter " << parameter.key() << ":" << parameter.value();
+      if (parameter.value().length() > 2 &&
+          strings::startsWith(parameter.value(), "/") &&
+		  strings::endsWith(parameter.value(), "/")) {
+    	  mountJsonFilename = parameter.value();
+      } else {
+        std::stringstream ss;
+        ss << "DockerVolumeDriverIsolator " << DVDI_WORKDIR_PARAM_NAME
+           << " parameter is invalid, must start and end with /";
+        return Error(ss.str());
+      }
+	}
+  }
+
+  if (!os::exists(mountJsonFilename)) {
+    Try<Nothing> mkdir = os::mkdir(mountJsonFilename);
+    if (mkdir.isError()) {
+      std::stringstream ss;
+      ss << "DockerVolumeDriverIsolator could not create work_dir: "
+         << mountJsonFilename;
+      return Error(ss.str());
+    }
+  } else if (!os::stat::isdir(mountJsonFilename)) {
+    return Error(mountJsonFilename + " is not a directory");
+  }
+
+  mountJsonFilename.append(DVDI_MOUNTLIST_FILENAME);
+  LOG(INFO) << "using " << mountJsonFilename;
 
   process::Owned<IsolatorProcess> process(
       new DockerVolumeDriverIsolatorProcess(parameters));
@@ -113,8 +154,15 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
   multihashmap<std::string, process::Owned<ExternalMount>> originalContainerMounts;
 
   // read container mounts from filesystem
-  std::ifstream ifs(DVDI_MOUNTLIST_FILENAME);
-  LOG(INFO) << "parsing mount json file(" << DVDI_MOUNTLIST_FILENAME
+  std::ifstream ifs(mountJsonFilename);
+
+  if (!os::exists(mountJsonFilename)) {
+    LOG(INFO) << "no mount json file exists at " << mountJsonFilename
+	            << " so there are no mounts to recover";
+    return Nothing();
+  }
+
+  LOG(INFO) << "parsing mount json file(" << mountJsonFilename
             << ") in recover()";
 
   std::istream_iterator<char> input(ifs);
@@ -156,9 +204,19 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
 
       std::string deviceDriverName((*iter).get("volumedriver").get<string>().c_str());
       LOG(INFO) << "deviceDriverName:" << deviceDriverName;
+      if (containsProhibitedChars(deviceDriverName)) {
+        LOG(ERROR) << "volumedriver element in json contains an illegal character, "
+                   << "mount will be ignored";
+        deviceDriverName.clear();
+      }
 
       std::string volumeName((*iter).get("volumename").get<string>().c_str());
       LOG(INFO) << "volumeName:" << volumeName;
+      if (containsProhibitedChars(volumeName)) {
+        LOG(ERROR) << "volumename element in json contains an illegal character, "
+                   << "mount will be ignored";
+        volumeName.clear();
+      }
       LOG(INFO) << "}";
 
       if (!containerid.empty() && !volumeName.empty()) {
@@ -170,14 +228,14 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
   	}
   }
 
-  LOG(INFO) << "parsed " << DVDI_MOUNTLIST_FILENAME
+  LOG(INFO) << "parsed " << mountJsonFilename
             << " and found evidence of " << recoveredMountCount
             << " previous active external mounts in recover()";
 
   // both maps starts empty, we will iterate to populate
 
-  typedef hashmap<
-    ExternalMountID, process::Owned<ExternalMount>> externalmountmap;
+  using externalmountmap =
+    hashmap<ExternalMountID, process::Owned<ExternalMount>>;
   // legacyMounts is a list of all mounts in use at according to recovered file
   externalmountmap legacyMounts;
   // inUseMounts is a list of all mounts deduced to be still in use now
@@ -185,7 +243,7 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
 
   // populate legacyMounts with all mounts at time file was written
   // note: some of the tasks using these may be gone now
-  for (auto& elem : originalContainerMounts) {
+  for (const auto &elem : originalContainerMounts) {
     // elem->second is ExternalMount,
     legacyMounts.put(elem.second.get()->getExternalMountId(), elem.second);
   }
@@ -197,7 +255,7 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
       LOG(INFO) << "state.directory is (" << state.directory << ")";
       std::list<process::Owned<ExternalMount>> mountsForContainer =
           originalContainerMounts.get(state.id.value());
-      for (auto iter : mountsForContainer) {
+      for (const auto &iter : mountsForContainer) {
         // copy task element to rebuild infos
         infos.put(state.id, iter);
         ExternalMountID id = iter->getExternalMountId();
@@ -209,20 +267,20 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
 
   // infos has now been rebuilt for every task now running
   // flush the infos structure to disk
-  std::ofstream infosout(DVDI_MOUNTLIST_FILENAME);
+  std::ofstream infosout(mountJsonFilename);
   dumpInfos(infosout);
   infosout.flush();
   infosout.close();
 
   // we will now reduce legacyMounts to only the mounts that should be removed
   // we will do this by deleting the mounts still in use
-  for( auto iter : inUseMounts) {
+  for( const auto &iter : inUseMounts) {
     legacyMounts.erase(iter.first);
   }
 
   // legacyMounts now contains only "orphan" mounts whose task is gone
   // we will attempt to unmount these
-  for (auto iter : legacyMounts) {
+  for (const auto &iter : legacyMounts) {
     if (!unmount(*(iter.second), "recover()")) {
       return Failure("recover() failed during unmount attempt");
     }
@@ -236,7 +294,7 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
 // even if a non-zero return code occurs
 bool DockerVolumeDriverIsolatorProcess::unmount(
     const ExternalMount& em,
-    const std::string&   callerLabelForLogging )
+    const std::string&   callerLabelForLogging ) const
 {
     LOG(INFO) << em << " is being unmounted on " << callerLabelForLogging;
     if (system(NULL)) { // Is a command processor available?
@@ -263,7 +321,7 @@ bool DockerVolumeDriverIsolatorProcess::unmount(
 // Attempts to mount specified external mount, returns true on success
 bool DockerVolumeDriverIsolatorProcess::mount(
     const ExternalMount& em,
-    const std::string&   callerLabelForLogging)
+    const std::string&   callerLabelForLogging) const
 {
     LOG(INFO) << em << " is being mounted on " << callerLabelForLogging;
     const std::string volumeDriver = em.deviceDriverName;
@@ -294,23 +352,22 @@ bool DockerVolumeDriverIsolatorProcess::mount(
       int i = system(cmd.get().c_str());
       if( 0 != i ) {
         LOG(ERROR) << cmd.get() << " failed to execute on "
-                   << callerLabelForLogging
-                   << ", continuing on the assumption this volume was manually unmounted previously";
+                   << callerLabelForLogging;
         return false;
       }
     } else {
-      LOG(ERROR) << "failed to acquire a command processor for unmount on "
+      LOG(ERROR) << "failed to acquire a command processor for mount on "
                  << callerLabelForLogging;
       return false;
     }
     return true;
 }
 
-std::ostream& DockerVolumeDriverIsolatorProcess::dumpInfos(std::ostream& out)
+std::ostream& DockerVolumeDriverIsolatorProcess::dumpInfos(std::ostream& out) const
 {
   out << "{\"mounts\": [\n";
   std::string delimiter = "";
-  for (auto const ent : infos) {
+  for (const auto &ent : infos) {
     out << delimiter << "{\n";
     out << "\"containerid\": \""  << ent.first << "\",\n";
     out << "\"volumedriver\": \"" << ent.second.get()->deviceDriverName << "\",\n";
@@ -331,6 +388,10 @@ bool DockerVolumeDriverIsolatorProcess::containsProhibitedChars(const std::strin
 // Prepare runs BEFORE a task is started
 // will check if the volume is already mounted and if not,
 // will mount the volume
+// A container can ask for multiple mounts, but if
+// there are any problems parsing or mounting even one
+// mount, we want to exit with an error and no new
+// mounted volumes. Goal: make all mounts or none.
 Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
     const ContainerID& containerId,
     const ExecutorInfo& executorInfo,
@@ -341,14 +402,6 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
   LOG(INFO) << "Preparing external storage for container: "
             << stringify(containerId);
 
-  JSON::Object environment;
-  JSON::Array jsonVariables;
-
-  static const size_t ARRAY_SIZE = 10;
-  std::array<std::string, ARRAY_SIZE> deviceDriverNames;
-  std::array<std::string, ARRAY_SIZE> volumeNames;
-  std::array<std::string, ARRAY_SIZE> mountOptions;
-
   // get things we need from task's environment in ExecutoInfo
   if (!executorInfo.command().has_environment()) {
     // No environment means no external volume specification
@@ -357,9 +410,21 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
     return None();
   }
 
+  // in the future we aspire to accepting a json mount list
+  // some un-used "scaffolding" is in place now for this
+  JSON::Object environment;
+  JSON::Array jsonVariables;
+
+  // we accept <environment-var-name>#, where # can be 1-9, saved in array[#]
+  // we also accept <environment-var-name>, saved in array[0]
+  static constexpr size_t ARRAY_SIZE = 10;
+  std::array<std::string, ARRAY_SIZE> deviceDriverNames;
+  std::array<std::string, ARRAY_SIZE> volumeNames;
+  std::array<std::string, ARRAY_SIZE> mountOptions;
+
   // iterate through the environment variables,
   // looking for the ones we need
-  foreach (const mesos::Environment_Variable& variable,
+  foreach (const auto &variable,
            executorInfo.command().environment().variables()) {
     JSON::Object variableObject;
     variableObject.values["name"] = variable.name();
@@ -372,7 +437,7 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
             << " rejected because it's value contains prohibited characters";
         return Failure("prepare() failed due to illegal environment variable");
       }
-      const size_t prefixLength = VOL_NAME_ENV_VAR_NAME.length();
+      const size_t prefixLength = strlen(VOL_NAME_ENV_VAR_NAME);
       if (variable.name().length() == prefixLength) {
         volumeNames[0] = variable.value();
       } else if (variable.name().length() == (prefixLength+1)) {
@@ -391,7 +456,7 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
             << " rejected because it's value contains prohibited characters";
         return Failure("prepare() failed due to illegal environment variable");
       }
-      const size_t prefixLength = VOL_DRIVER_ENV_VAR_NAME.length();
+      const size_t prefixLength = strlen(VOL_DRIVER_ENV_VAR_NAME);
       if (variable.name().length() == prefixLength) {
     	deviceDriverNames[0] = variable.value();
       } else if (variable.name().length() == (prefixLength+1)) {
@@ -409,7 +474,7 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
             << " rejected because it's value contains prohibited characters";
         return Failure("prepare() failed due to illegal environment variable");
       }
-      const size_t prefixLength = VOL_OPTS_ENV_VAR_NAME.length();
+      const size_t prefixLength = strlen(VOL_OPTS_ENV_VAR_NAME);
       if (variable.name().length() == prefixLength) {
         mountOptions[0] = variable.value();
       } else if (variable.name().length() == (prefixLength+1)) {
@@ -434,6 +499,7 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
   // in use by another container
   std::vector<process::Owned<ExternalMount>> unconnectedExternalMounts;
 
+  // not using iterator because we access all 3 arrays using common index
   for (size_t i = 0; i < volumeNames.size(); i++) {
     if (volumeNames[i].empty()) {
       continue;
@@ -446,7 +512,7 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
         new ExternalMount(deviceDriverNames[i], volumeNames[i], mountOptions[i]));
     // check for duplicates in environment
     bool duplicateInEnv = false;
-    for (auto ent : requestedExternalMounts) {
+    for (const auto &ent : requestedExternalMounts) {
       if (ent.get()->getExternalMountId() ==
              mount.get()->getExternalMountId()) {
         duplicateInEnv = true;
@@ -462,7 +528,7 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
 
     // now check if another container is already using this same mount
     bool mountInUse = false;
-    for (auto const ent : infos) {
+    for (const auto &ent : infos) {
       if (ent.second.get()->getExternalMountId() ==
              mount.get()->getExternalMountId()) {
         mountInUse = true;
@@ -480,28 +546,33 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
   // We need this because, if there is a failure, we need to unmount these.
   // The goal is we mount either ALL or NONE.
   std::vector<process::Owned<ExternalMount>> successfulExternalMounts;
-  for (auto const iter : unconnectedExternalMounts) {
+  for (const auto &iter : unconnectedExternalMounts) {
     if (mount(*iter, "prepare()")) {
       successfulExternalMounts.push_back(iter);
     } else {
       // once any mount attempt fails, give up on whole list
       // and attempt to undo the mounts we already made
-      for (auto const unmountme : successfulExternalMounts) {
-        if (unmount(*unmountme, "prepare()-recovery after failed mount")) {
-        	break;
+      for (const auto &unmountme : successfulExternalMounts) {
+        if (unmount(*unmountme, "prepare()-reverting mounts after failure")) {
+          LOG(ERROR) << "during prepare() of a container requesting multiple mounts, "
+                     << " a mount failure occurred after making at least one mount and"
+	                 << " a second failure occurred while attempting to remove"
+	                 << " the earlier mount(s)";
+          break;
         }
       }
       return Failure("prepare() failed during mount attempt");
     }
   }
 
-  // note: infos has a record for each mount asscoiated with this container
+  // note: infos has a record for each mount associated with this container
   // even if the mount is also used by another container
-  for (auto const iter : requestedExternalMounts) {
+  for (const auto &iter : requestedExternalMounts) {
     infos.put(containerId, iter);
   }
-  // flush infos to disk
-  std::ofstream infosout(DVDI_MOUNTLIST_FILENAME);
+  // flush infos to disk - this currently only flushes to OS, with possible caching there,
+  // might have to investigate boost file_descriptor_sink to make physical flush call
+  std::ofstream infosout(mountJsonFilename);
   dumpInfos(infosout);
   infosout.flush();
   infosout.close();
@@ -557,14 +628,14 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::cleanup(
   // mountList now contains all the mounts used by this container
 
   // note: it is possible that some of these mounts are also used by other tasks
-  for( auto iter : mountsList) {
+  for( const auto &iter : mountsList) {
     size_t mountCount = 0;
-    for (auto& elem : infos) {
+    for (const auto &elem : infos) {
       // elem.second is ExternalMount,
       if (iter->getExternalMountId() == elem.second.get()->getExternalMountId()) {
-          if( ++mountCount > 1) {
-         	  break; // as soon as we find two users we can quit
-          }
+        if( ++mountCount > 1) {
+       	  break; // as soon as we find two users we can quit
+        }
       }
     }
     if (1 == mountCount) {
@@ -579,7 +650,7 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::cleanup(
   infos.remove(containerId);
 
   // flush infos to disk, since we just changed it
-  std::ofstream infosout(DVDI_MOUNTLIST_FILENAME);
+  std::ofstream infosout(mountJsonFilename);
   dumpInfos(infosout);
   infosout.flush();
   infosout.close();

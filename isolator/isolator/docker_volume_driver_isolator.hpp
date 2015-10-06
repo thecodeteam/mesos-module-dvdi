@@ -36,11 +36,6 @@
 namespace mesos {
 namespace slave {
 
-constexpr char    VOL_NAME_ENV_VAR_NAME[]   = "DVDI_VOLUME_NAME";
-constexpr char    VOL_DRIVER_ENV_VAR_NAME[] = "DVDI_VOLUME_DRIVER";
-constexpr char    VOL_OPTS_ENV_VAR_NAME[]   = "DVDI_VOLUME_OPTS";
-constexpr char    JSON_VOLS_ENV_VAR_NAME[]  = "DVDI_VOLS_JSON_ARRAY";
-
 class DockerVolumeDriverIsolatorProcess: public mesos::slave::IsolatorProcess {
 public:
   static Try<mesos::slave::Isolator*> create(const Parameters& parameters);
@@ -115,7 +110,7 @@ private:
 
   const Parameters parameters;
 
-  typedef size_t ExternalMountID;
+  using ExternalMountID = size_t;
 
   struct ExternalMount
   {
@@ -157,50 +152,53 @@ private:
   // Attempts to unmount specified external mount, returns true on success
   bool unmount(
       const ExternalMount& em,
-      const std::string&   callerLabelForLogging );
+      const std::string&   callerLabelForLogging ) const;
 
   // Attempts to mount specified external mount, returns true on success
   bool mount(
       const ExternalMount& em,
-      const std::string&   callerLabelForLogging);
+      const std::string&   callerLabelForLogging) const;
 
   // Returns true if string contains at least one prohibited character
   // as defined in the list below.
   // This is intended as a tool to detect injection attack attempts.
   bool containsProhibitedChars(const std::string& s) const;
 
-  std::ostream& dumpInfos(std::ostream& out);
+  std::ostream& dumpInfos(std::ostream& out) const;
 
-
-
-  typedef multihashmap<
-    ContainerID, process::Owned<ExternalMount>> containermountmap;
+  using containermountmap =
+    multihashmap<ContainerID, process::Owned<ExternalMount>>;
   containermountmap infos;
 
   // compiler had issues with the autodetecting size of following array,
   // thus a constant is defined
-  static const size_t NUM_PROHIBITED = 26;
-  const char prohibitedchars[NUM_PROHIBITED]  = {
+
+  static constexpr size_t NUM_PROHIBITED = 26;
+  static const char prohibitedchars[NUM_PROHIBITED]; /*  = {
   '%', '/', ':', ';', '\0',
   '<', '>', '|', '`', '$', '\'',
   '?', '^', '&', ' ', '{', '\"',
-  '}', '[', ']', '\n', '\t', '\v', '\b', '\r', '\\' };
+  '}', '[', ']', '\n', '\t', '\v', '\b', '\r', '\\' };*/
 
-  const std::string REXRAY_MOUNT_PREFIX       = "/var/lib/rexray/volumes/";
-  const std::string DVDCLI_MOUNT_CMD          = "/usr/bin/dvdcli mount";
-  const std::string DVDCLI_UNMOUNT_CMD        = "/usr/bin/dvdcli unmount";
+  static constexpr const char* REXRAY_MOUNT_PREFIX       = "/var/lib/rexray/volumes/";
+  static constexpr const char* DVDCLI_MOUNT_CMD          = "/usr/bin/dvdcli mount";
+  static constexpr const char* DVDCLI_UNMOUNT_CMD        = "/usr/bin/dvdcli unmount";
 
-  const std::string VOL_NAME_CMD_OPTION       = "--volumename=";
-  const std::string VOL_DRIVER_CMD_OPTION     = "--volumedriver=";
-  const std::string VOL_OPTS_CMD_OPTION       = "--volumeopts=";
-  const std::string VOL_DRIVER_DEFAULT        = "rexray";
+  static constexpr const char* VOL_NAME_CMD_OPTION       = "--volumename=";
+  static constexpr const char* VOL_DRIVER_CMD_OPTION     = "--volumedriver=";
+  static constexpr const char* VOL_OPTS_CMD_OPTION       = "--volumeopts=";
+  static constexpr const char* VOL_DRIVER_DEFAULT        = "rexray";
 
-  const std::string VOL_NAME_ENV_VAR_NAME     = "DVDI_VOLUME_NAME";
-  const std::string VOL_DRIVER_ENV_VAR_NAME   = "DVDI_VOLUME_DRIVER";
-  const std::string VOL_OPTS_ENV_VAR_NAME     = "DVDI_VOLUME_OPTS";
-  const std::string JSON_VOLS_ENV_VAR_NAME    = "DVDI_VOLS_JSON_ARRAY";
+  static constexpr const char* VOL_NAME_ENV_VAR_NAME     = "DVDI_VOLUME_NAME";
+  static constexpr const char* VOL_DRIVER_ENV_VAR_NAME   = "DVDI_VOLUME_DRIVER";
+  static constexpr const char* VOL_OPTS_ENV_VAR_NAME     = "DVDI_VOLUME_OPTS";
+  static constexpr const char* JSON_VOLS_ENV_VAR_NAME    = "DVDI_VOLS_JSON_ARRAY";
 
-  const std::string DVDI_MOUNTLIST_FILENAME   = "/tmp/dvdimounts.json";
+  static constexpr const char* DVDI_MOUNTLIST_DEFAULT_DIR= "/var/lib/mesos/dvdi/";
+  static constexpr const char* DVDI_MOUNTLIST_FILENAME   = "dvdimounts.json";
+  static constexpr const char* DVDI_WORKDIR_PARAM_NAME   = "work_dir";
+
+  static std::string mountJsonFilename;
 };
 
 } /* namespace slave */
