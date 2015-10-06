@@ -29,6 +29,7 @@ Options like these are only available if your `Volume Driver` exposes them.  For
   "DVDI_VOLUME_NAME": "testing",
   "DVDI_VOLUME_DRIVER": "platform1",
   "DVDI_VOLUME_OPTS": "size=5,iops=150,volumetype=io1,newfstype=xfs,overwritefs=true"
+}
 ```
 
 # Mesos Agent Configuration
