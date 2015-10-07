@@ -145,16 +145,20 @@ To simplify the process of assembling and configuring a build environment for th
 
 ### Build using our Docker Module Build Image
 These steps can be used to compile your own Isolat Module from a specific commit.
-`git clone https://github.com/emccode/mesos-module-dvdi`
-`cd mesos-module-dvdi`
-`docker run -ti -v $(pwd):/isolator emccode/mesos-build-dvdi-modules:0.23.0`
+```
+git clone https://github.com/emccode/mesos-module-dvdi
+cd mesos-module-dvdi
+docker run -ti -v $(pwd):/isolator emccode/mesos-module-dvdi-dev:0.23.0
+```
 
 Following this locate the `libmesos_dvdi_isolator-<version>.so` file under `isolator/build/.libs` and copy it to the `/usr/lib` directory.
 
 ### (optional) Build a custom Mesos Build Image
 These steps can be used to compile a custom Mesos build image allowing you to change whether 0.23.0 is used or not.
-`docker build -t name/mesos-build-module-dev:0.23.0 - < Dockerfile-mesos-build-module-dev`
-`docker build -t name/mesos-build-module-dvdi:0.23.0 - < Dockerfile-mesos-build-module-dvdi`
+```
+docker build -t name/mesos-build-module-dev:0.23.0 - < Dockerfile-mesos-build-module-dev
+docker build -t name/mesos-module-dvdi-dev:0.23.0 - < Dockerfile-mesos-build-module-dvdi
+```
 
 # Release information
 ---------
