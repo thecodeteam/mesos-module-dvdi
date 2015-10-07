@@ -49,13 +49,10 @@
 - Mesos containerizer for isolation of FS
  - Priority of isolators
  - Subclass of mesos containerizer
-- Multiple volumes per task
-- Slave recovery
 
 ---
 
 # Caveats
-- Slave recovery process
 - 0.23.0
 - Use Volume Driver exclusively between containerizers due to unmounts
 
@@ -64,3 +61,14 @@
 # Feedback
 - Mountpoint coming back into task
 - Credential management
+
+---
+
+# Content
+
+[github.com/emccode/mesos-module-dvdi](https://github.com/emccode/mesos-module-dvdi)
+[github.com/emccode/dvdcli](https://github.com/emccode/dvdcli)
+[EMC {code} Blog]
+[EMC Pulse Blog]
+[Mesosphere Blog]
+[Mesosphere PR]
