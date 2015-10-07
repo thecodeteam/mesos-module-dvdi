@@ -50,8 +50,8 @@ public:
   // of container states which will assist in recovery,
   // when this is available, code should use it.
   virtual process::Future<Nothing> recover(
-    const std::list<mesos::slave::ExecutorRunState>& states,
-    const hashset<ContainerID>& orphans);
+      const std::list<mesos::slave::ExecutorRunState>& states,
+      const hashset<ContainerID>& orphans);
 
   // Prepare runs BEFORE a task is started
   // will check if the volume is already mounted and if not,
@@ -75,7 +75,7 @@ public:
       const ContainerID& containerId,
       const ExecutorInfo& executorInfo,
       const std::string& directory,
-	  const Option<std::string>& rootfs,
+      const Option<std::string>& rootfs,
       const Option<std::string>& user);
 
   // Nothing will be done at task start
@@ -85,7 +85,7 @@ public:
 
   // no-op, mount occurs at prepare
   virtual process::Future<mesos::slave::Limitation> watch(
-     const ContainerID& containerId);
+      const ContainerID& containerId);
 
   // no-op, nothing enforced
   virtual process::Future<Nothing> update(
@@ -118,7 +118,20 @@ private:
         const std::string& _deviceDriverName,
         const std::string& _volumeName,
 		const std::string& _mountOptions)
-      : deviceDriverName(_deviceDriverName), volumeName(_volumeName), mountOptions(_mountOptions) {}
+      : deviceDriverName(_deviceDriverName),
+		volumeName(_volumeName),
+		mountOptions(_mountOptions),
+		mountpoint() {}
+
+    explicit ExternalMount(
+        const std::string& _deviceDriverName,
+        const std::string& _volumeName,
+		const std::string& _mountOptions,
+        const std::string& _mountpoint)
+      : deviceDriverName(_deviceDriverName),
+		volumeName(_volumeName),
+		mountOptions(_mountOptions),
+		mountpoint(_mountpoint) {}
 
     bool operator ==(const ExternalMount& other) {
     	return getExternalMountId() == other.getExternalMountId();
@@ -137,15 +150,16 @@ private:
     // note device driver name and volume name are not case sensitive,
     // but are stored as submitted in constructor
     const std::string deviceDriverName;
-	const std::string volumeName;
+    const std::string volumeName;
     const std::string mountOptions;
+    const std::string mountpoint;
   };
 
   // overload '<<' operator to allow rendering of ExternalMount
   friend inline std::ostream& operator<<(std::ostream& os, const ExternalMount& em)
   {
     os << em.deviceDriverName << '/' << em.volumeName
-    << '(' << em.mountOptions << ")";
+    << '(' << em.mountOptions << ") " << em.mountpoint;
     return os;
   }
 
@@ -154,8 +168,9 @@ private:
       const ExternalMount& em,
       const std::string&   callerLabelForLogging ) const;
 
-  // Attempts to mount specified external mount, returns true on success
-  bool mount(
+  // Attempts to mount specified external mount,
+  // returns non-empty string on success
+  std::string mount(
       const ExternalMount& em,
       const std::string&   callerLabelForLogging) const;
 

@@ -41,6 +41,8 @@
 #include "linux/fs.hpp"
 using namespace mesos::internal;
 #include <stout/foreach.hpp>
+#include <stout/error.hpp>
+#include <stout/nothing.hpp>
 #include <stout/os.hpp>
 #include <stout/format.hpp>
 #include <stout/strings.hpp>
@@ -100,7 +102,7 @@ Try<Isolator*> DockerVolumeDriverIsolatorProcess::create(const Parameters& param
            << " parameter is invalid, must start and end with /";
         return Error(ss.str());
       }
-	}
+    }
   }
 
   if (!os::exists(mountJsonFilename)) {
@@ -158,7 +160,7 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
 
   if (!os::exists(mountJsonFilename)) {
     LOG(INFO) << "no mount json file exists at " << mountJsonFilename
-	            << " so there are no mounts to recover";
+              << " so there are no mounts to recover";
     return Nothing();
   }
 
@@ -191,16 +193,21 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
   	LOG(INFO) << "(*iter) contains volumename:" << (*iter).contains("volumename");
   	LOG(INFO) << "(*iter) contains volumedriver:" << (*iter).contains("volumedriver");
   	LOG(INFO) << "(*iter) contains mountoptions:" << (*iter).contains("mountoptions");
+  	LOG(INFO) << "(*iter) contains mountpoint:" << (*iter).contains("mountpoint");
 
   	if ((*iter).contains("containerid") &&
   	    (*iter).contains("volumename") &&
         (*iter).contains("volumedriver") &&
-        (*iter).contains("mountoptions")) {
+        (*iter).contains("mountoptions") &&
+        (*iter).contains("mountpoint")) {
       std::string containerid((*iter).get("containerid").get<string>().c_str());
       LOG(INFO) << "containerid:" << containerid;
 
       std::string mountOptions = (*iter).get("mountoptions").get<string>().c_str();
       LOG(INFO) << "mountOptions:" << mountOptions;
+
+      std::string mountpoint = (*iter).get("mountpoint").get<string>().c_str();
+      LOG(INFO) << "mountpoint:" << mountpoint;
 
       std::string deviceDriverName((*iter).get("volumedriver").get<string>().c_str());
       LOG(INFO) << "deviceDriverName:" << deviceDriverName;
@@ -220,9 +227,12 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
       LOG(INFO) << "}";
 
       if (!containerid.empty() && !volumeName.empty()) {
-    	recoveredMountCount++;
+        recoveredMountCount++;
         process::Owned<ExternalMount> mount(
-            new ExternalMount(deviceDriverName, volumeName, mountOptions));
+            new ExternalMount(deviceDriverName,
+                              volumeName,
+                              mountOptions,
+                              mountpoint));
         originalContainerMounts.put(containerid, mount);
       }
   	}
@@ -262,7 +272,7 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
         LOG(INFO) << "re-identified a preserved mount, id is " << id;
         inUseMounts.put(iter->getExternalMountId(), iter);
       }
-	}
+    }
   }
 
   // infos has now been rebuilt for every task now running
@@ -297,19 +307,30 @@ bool DockerVolumeDriverIsolatorProcess::unmount(
     const std::string&   callerLabelForLogging ) const
 {
     LOG(INFO) << em << " is being unmounted on " << callerLabelForLogging;
+
     if (system(NULL)) { // Is a command processor available?
-      const Try<std::string>& cmd = strings::format("%s %s%s %s%s",
+      LOG(INFO) << "invoking " << DVDCLI_UNMOUNT_CMD << " "
+                << VOL_DRIVER_CMD_OPTION << em.deviceDriverName << " "
+  	            << VOL_NAME_CMD_OPTION << em.volumeName;
+      std::ostringstream cmdOut;
+      Try<int> retcode = os::shell(&cmdOut, "%s %s%s %s%s",
               DVDCLI_UNMOUNT_CMD,
-              VOL_DRIVER_CMD_OPTION, em.deviceDriverName,
-              VOL_NAME_CMD_OPTION, em.volumeName);
-      if (cmd.isError()) {
-        LOG(ERROR) << "failed to format an unmount command on " << callerLabelForLogging;
-        return false;
-      }
-      int i = system(cmd.get().c_str());
-      if( 0 != i ) {
-        LOG(WARNING) << cmd.get() << " failed to execute on " << callerLabelForLogging
-   	                 << ", continuing on the assumption this volume was manually unmounted previously";
+              VOL_DRIVER_CMD_OPTION, em.deviceDriverName.c_str(),
+              VOL_NAME_CMD_OPTION, em.volumeName.c_str());
+      if (retcode.isError()) {
+        LOG(WARNING) << DVDCLI_UNMOUNT_CMD << " failed to execute on " << callerLabelForLogging
+   	                 << ", continuing on the assumption this volume was manually unmounted previously "
+                     << retcode.error();
+      } else {
+        if (retcode.get() == ECHILD) {
+   	      LOG(WARNING) << "pclose could not obtain cmd execute status";
+        } else if (retcode.get() != 0) {
+          LOG(WARNING) << DVDCLI_UNMOUNT_CMD << " returned errorcode " << retcode.get()
+       	               << ", continuing on the assumption this volume was manually unmounted previously";
+        }
+        if (!cmdOut.str().empty()) {
+          LOG(INFO) << DVDCLI_UNMOUNT_CMD << " returned " << cmdOut.str();
+        }
       }
     } else {
       LOG(ERROR) << "failed to acquire a command processor for unmount on " << callerLabelForLogging;
@@ -319,13 +340,14 @@ bool DockerVolumeDriverIsolatorProcess::unmount(
 }
 
 // Attempts to mount specified external mount, returns true on success
-bool DockerVolumeDriverIsolatorProcess::mount(
+std::string DockerVolumeDriverIsolatorProcess::mount(
     const ExternalMount& em,
     const std::string&   callerLabelForLogging) const
 {
     LOG(INFO) << em << " is being mounted on " << callerLabelForLogging;
     const std::string volumeDriver = em.deviceDriverName;
     const std::string volumeName = em.volumeName;
+    std::string mountpoint; // return value init'd to empty
 
     // parse and format volume options
     std::stringstream ss(em.mountOptions);
@@ -339,28 +361,35 @@ bool DockerVolumeDriverIsolatorProcess::mount(
     }
 
     if (system(NULL)) { // Is a command processor available?
-      const Try<std::string>& cmd = strings::format("%s %s%s %s%s %s",
-            DVDCLI_MOUNT_CMD,
-            VOL_DRIVER_CMD_OPTION, volumeDriver,
-  	        VOL_NAME_CMD_OPTION, volumeName,
-  	        opts);
-      if (cmd.isError()) {
-        LOG(ERROR) << "failed to format an mount command on "
-                   << callerLabelForLogging;
-        return false;
-      }
-      int i = system(cmd.get().c_str());
-      if( 0 != i ) {
-        LOG(ERROR) << cmd.get() << " failed to execute on "
-                   << callerLabelForLogging;
-        return false;
+      LOG(INFO) << "invoking " << DVDCLI_MOUNT_CMD << " "
+                << VOL_DRIVER_CMD_OPTION << em.deviceDriverName << " "
+                << VOL_NAME_CMD_OPTION << em.volumeName << " "
+	            << opts;
+      std::ostringstream cmdOut;
+      Try<int> retcode = os::shell(&cmdOut, "%s %s%s %s%s %s",
+              DVDCLI_MOUNT_CMD,
+              VOL_DRIVER_CMD_OPTION, em.deviceDriverName.c_str(),
+              VOL_NAME_CMD_OPTION, em.volumeName.c_str(),
+              opts.c_str());
+      if (retcode.isError()) {
+        LOG(ERROR) << DVDCLI_MOUNT_CMD << " failed to execute on " << callerLabelForLogging
+                   << retcode.error();
+      } else {
+        if (retcode.get() == ECHILD) {
+   	      LOG(ERROR) << "pclose could not obtain cmd execute status";
+        } else if (retcode.get() != 0) {
+          LOG(ERROR) << DVDCLI_MOUNT_CMD << " returned errorcode " << retcode.get();
+        } else if (strings::trim(cmdOut.str()).empty()) {
+          LOG(ERROR) << DVDCLI_MOUNT_CMD << " returned an empty mountpoint name";
+        } else {
+          mountpoint = strings::trim(cmdOut.str());
+          LOG(INFO) << DVDCLI_MOUNT_CMD << " returned mountpoint:" << mountpoint;
+        }
       }
     } else {
-      LOG(ERROR) << "failed to acquire a command processor for mount on "
-                 << callerLabelForLogging;
-      return false;
+      LOG(ERROR) << "failed to acquire a command processor for unmount on " << callerLabelForLogging;
     }
-    return true;
+    return mountpoint;
 }
 
 std::ostream& DockerVolumeDriverIsolatorProcess::dumpInfos(std::ostream& out) const
@@ -372,7 +401,8 @@ std::ostream& DockerVolumeDriverIsolatorProcess::dumpInfos(std::ostream& out) co
     out << "\"containerid\": \""  << ent.first << "\",\n";
     out << "\"volumedriver\": \"" << ent.second.get()->deviceDriverName << "\",\n";
     out << "\"volumename\": \""   << ent.second.get()->volumeName << "\",\n";
-    out << "\"mountoptions\": \"" << ent.second.get()->mountOptions << "\"\n";
+    out << "\"mountoptions\": \"" << ent.second.get()->mountOptions << "\",\n";
+    out << "\"mountpoint\": \""   << ent.second.get()->mountpoint << "\"\n";
     out << "}";
     delimiter = ",\n";
   }
@@ -396,7 +426,7 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
     const ContainerID& containerId,
     const ExecutorInfo& executorInfo,
     const string& directory,
-	const Option<string>& rootfs,
+    const Option<string>& rootfs,
     const Option<string>& user)
 {
   LOG(INFO) << "Preparing external storage for container: "
@@ -434,7 +464,7 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
     if (strings::startsWith(variable.name(), VOL_NAME_ENV_VAR_NAME)) {
       if (containsProhibitedChars(variable.value())) {
         LOG(ERROR) << "environment variable " << variable.name()
-            << " rejected because it's value contains prohibited characters";
+                   << " rejected because it's value contains prohibited characters";
         return Failure("prepare() failed due to illegal environment variable");
       }
       const size_t prefixLength = strlen(VOL_NAME_ENV_VAR_NAME);
@@ -449,7 +479,8 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
           }
         }
       }
-      LOG(INFO) << "external volume name (" << variable.value() << ") parsed from environment";
+      LOG(INFO) << "external volume name (" << variable.value()
+                << ") parsed from environment";
     } else if (strings::startsWith(variable.name(), VOL_DRIVER_ENV_VAR_NAME)) {
       if (containsProhibitedChars(variable.value())) {
         LOG(ERROR) << "environment variable " << variable.name()
@@ -498,13 +529,16 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
   // unconnectedExternalMounts is the subset of those not already
   // in use by another container
   std::vector<process::Owned<ExternalMount>> unconnectedExternalMounts;
+  // prevConnectedExternalMounts is the subset of those that are
+  // in use by another container
+  std::vector<process::Owned<ExternalMount>> prevConnectedExternalMounts;
 
   // not using iterator because we access all 3 arrays using common index
   for (size_t i = 0; i < volumeNames.size(); i++) {
     if (volumeNames[i].empty()) {
       continue;
     }
-    LOG(INFO) << "validating mount" << volumeNames[i];
+    LOG(INFO) << "validating mount name " << volumeNames[i];
     if (deviceDriverNames[i].empty()) {
       deviceDriverNames[i] = VOL_DRIVER_DEFAULT;
     }
@@ -532,6 +566,7 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
       if (ent.second.get()->getExternalMountId() ==
              mount.get()->getExternalMountId()) {
         mountInUse = true;
+        prevConnectedExternalMounts.push_back(ent.second);
         LOG(INFO) << "requested mount(" << *mount
                   << ") is already mounted by another container";
         break;
@@ -547,11 +582,19 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
   // The goal is we mount either ALL or NONE.
   std::vector<process::Owned<ExternalMount>> successfulExternalMounts;
   for (const auto &iter : unconnectedExternalMounts) {
-    if (mount(*iter, "prepare()")) {
-      successfulExternalMounts.push_back(iter);
+    std::string mountpoint = mount(*iter, "prepare()");
+    if (!mountpoint.empty()) {
+      // need to construct a newExternalMount because we just learned the mountpoint
+      process::Owned<ExternalMount> newmount(
+            new ExternalMount(iter->deviceDriverName,
+                              iter->volumeName,
+							  iter->mountOptions,
+							  mountpoint));
+      successfulExternalMounts.push_back(newmount);
     } else {
       // once any mount attempt fails, give up on whole list
       // and attempt to undo the mounts we already made
+      LOG(ERROR) << "mount failed during prepare()";
       for (const auto &unmountme : successfulExternalMounts) {
         if (unmount(*unmountme, "prepare()-reverting mounts after failure")) {
           LOG(ERROR) << "during prepare() of a container requesting multiple mounts, "
@@ -567,7 +610,10 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
 
   // note: infos has a record for each mount associated with this container
   // even if the mount is also used by another container
-  for (const auto &iter : requestedExternalMounts) {
+  for (const auto &iter : prevConnectedExternalMounts) {
+    infos.put(containerId, iter);
+  }
+  for (const auto &iter : successfulExternalMounts) {
     infos.put(containerId, iter);
   }
   // flush infos to disk - this currently only flushes to OS, with possible caching there,
