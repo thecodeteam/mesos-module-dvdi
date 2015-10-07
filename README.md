@@ -148,7 +148,7 @@ These steps can be used to compile your own Isolat Module from a specific commit
 ```
 git clone https://github.com/emccode/mesos-module-dvdi
 cd mesos-module-dvdi
-docker run -ti -v $(pwd):/isolator emccode/mesos-module-dvdi-dev:0.23.0
+docker run -ti -v `pwd`:/isolator emccode/mesos-module-dvdi-dev:0.23.0
 ```
 
 Following this locate the `libmesos_dvdi_isolator-<version>.so` file under `isolator/build/.libs` and copy it to the `/usr/lib` directory.
