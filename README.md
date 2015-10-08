@@ -1,4 +1,4 @@
-# dvdi-modules [![Build Status](https://travis-ci.org/emccode/mesos-module-dvdi.svg)](https://travis-ci.org/emccode/mesos-module-dvdi)
+# mesos-module-dvdi [![Build Status](https://travis-ci.org/emccode/mesos-module-dvdi.svg)](https://travis-ci.org/emccode/mesos-module-dvdi)
 
 This repo contains the `Docker Volume Driver Isolator Module` for Mesos.  The purpose is to create a module that lives on the Mesos Slaves (agents) that enables external storage to be created/mounted/unmounted with each task that is assigned to a slave.
 
