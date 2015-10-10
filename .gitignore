@@ -32,5 +32,5 @@ isolator/build/*
 dvdi-node-*.tar
 docker-compose
 
-mesos/
 isolator/include/
+.deps

@@ -74,9 +74,14 @@ else
 
   if test -d "$mesos_build_dir"; then
     MESOS_INCLUDE_PATH="${MESOS_INCLUDE_PATH} -I${mesos_build_dir}/include"
-    PROTOBUF="${mesos_build_dir}/3rdparty/libprocess/3rdparty/protobuf-2.5.0"
-    PROTOC_PATH="${PROTOBUF}/src"
-    MESOS_INCLUDE_PATH="${MESOS_INCLUDE_PATH} -I${PROTOBUF}/src"
+    if test -n "`echo $with_protobuf`"; then
+      PROTOC_PATH="${with_protobuf}/bin"
+      MESOS_INCLUDE_PATH="${MESOS_INCLUDE_PATH} -I${with_protobuf}/include"
+    else
+      PROTOBUF="${mesos_build_dir}/3rdparty/libprocess/3rdparty/protobuf-2.5.0"
+      PROTOC_PATH="${PROTOBUF}/src"
+      MESOS_INCLUDE_PATH="${MESOS_INCLUDE_PATH} -I${PROTOBUF}/src"
+    fi
   else
     AC_MSG_ERROR([Invalid mesos build path; use --with-mesos-build-dir=<DIR>
                   <DIR> is the Mesos build directory.])
