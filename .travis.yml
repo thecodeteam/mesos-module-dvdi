@@ -1,9 +1,21 @@
-sudo: required
-
-services:
-  - docker
-
 language: c++
 
 script:
   make
+
+addons:
+  apt:
+    sources:
+    - ubuntu-toolchain-r-test
+    packages:
+    - gdb
+    - g++-4.8
+    - libapr1-dev
+    - python-protobuf
+    - libaprutil1-dev
+    - libcurl4-nss-dev
+
+cache:
+  apt: true
+  directories:
+  - .deps
