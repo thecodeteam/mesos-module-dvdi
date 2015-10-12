@@ -1,7 +1,16 @@
 language: c++
 
 script:
-  make
+  - make svn
+  - make boost
+  - make boto
+  - make glog
+  - make protobuf
+  - make picojson
+  - make mesos-0.23.0 mesos-0.23.1 mesos-0.24.0
+  - make autoconf
+  - make isolator-0.23.0 isolator-0.23.1
+  - make bintray
 
 addons:
   apt:
@@ -19,3 +28,13 @@ cache:
   apt: true
   directories:
   - .deps
+
+deploy:
+  - provider: bintray
+    file: bintray-unstable-filtered.json
+    user: $BINTRAY_USER
+    key: $BINTRAY_KEY
+    skip_cleanup: true
+    on:
+      all_branches: true
+      condition: $TRAVIS_TAG =~ ^$ && ($TRAVIS_REPO_SLUG = 'emccode/mesos-module-dvdi' || $IGNORE_REPO_SLUG_CONDITION = true) && ($TRAVIS_BRANCH = master || $IGNORE_BRANCH_CONDITION = true)
