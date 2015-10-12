@@ -1,0 +1,21 @@
+{
+    "package": {
+        "name": "unstable",
+        "repo": "mesos-module-dvdi",
+        "subject": "emccode"
+    },
+
+    "version": {
+        "name": "${SEMVER}",
+        "desc": "${DSCRIP}",
+        "released": "${RELDTE}",
+        "gpgSign": false
+    },
+
+    "files": [{
+        "includePattern": "isolator/build/(.+)/build/.libs/(.+-.+\.so)",
+        "uploadPattern": "unstable/${SEMVER}/$1/$2"
+    }],
+
+    "publish": true
+}

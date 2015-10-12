@@ -1,5 +1,8 @@
-AC_INIT([dvdi-modules],[0.23.0])
 AC_PREREQ([2.69])
+
+define([isolator_version], esyscmd([sh -c "printf $ISOLATOR_VERSION"]))
+AC_INIT([dvdi-modules],[isolator_version])
+
 AC_CONFIG_FILES([Makefile])
 AC_LANG([C++])
 AC_PROG_CC

@@ -34,3 +34,4 @@ docker-compose
 
 isolator/include/
 .deps
+bintray-*-filtered.json
