@@ -1,15 +1,18 @@
 language: c++
 
 script:
-  - make svn
+  - make svn 
   - make boost
   - make boto
   - make glog
   - make protobuf
   - make picojson
-  - make mesos-0.23.0 mesos-0.23.1 mesos-0.24.0
+  - make mesos-0.23.0 
+  - make mesos-0.23.1 
+  - make mesos-0.24.0
   - make autoconf
-  - make isolator-0.23.0 isolator-0.23.1
+  - make isolator-0.23.0 
+  - make isolator-0.23.1
   - make bintray
 
 addons:
@@ -23,11 +26,11 @@ addons:
     - python-protobuf
     - libaprutil1-dev
     - libcurl4-nss-dev
+    - p7zip-full
 
 cache:
-  apt: true
   directories:
-  - .deps
+    - /tmp/mesos-ubuntu-12.04-deps/.7zs
 
 deploy:
   - provider: bintray

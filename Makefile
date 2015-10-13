@@ -1,6 +1,11 @@
 # MESOS_VERSIONS is a list of space, separated versions of mesos that 
-# will be built and used to build the isolator module
+# will be built.
 MESOS_VERSIONS := 0.23.0 0.23.1 0.24.0
+
+# ISO_VERSIONS is either equal to or a subset of the MESOS_VERSIONS
+# list. The versions in this list are the versions of Mesos against 
+# which to build the isolator module.
+ISO_VERSIONS := 0.23.0 0.23.1
 
 ########################################################################
 ##                             MAKEFLAGS                              ##
@@ -18,6 +23,11 @@ endif
 OS := $(shell uname -s)
 ARCH := x86_64
 UNAME := $(shell uname -a)
+ifneq ($(origin TRAVIS_BRANCH), undefined)
+U1204 := ubuntu
+else
+U1204 := $(findstring ubuntu,$(UNAME))
+endif
 
 ########################################################################
 ##                               Version                              ##
@@ -117,7 +127,7 @@ export CC=gcc-4.8
 ##                                  Main                              ##
 ########################################################################
 MESOS := $(addprefix mesos-,$(MESOS_VERSIONS))
-ISOLATOR := $(addprefix isolator-,$(MESOS_VERSIONS))
+ISOLATOR := $(addprefix isolator-,$(ISO_VERSIONS))
 
 all: install 
 install: $(SVN) $(BOOST) $(BOTO) $(GLOG) $(PROTOBUF) $(PICOJSON)
@@ -129,14 +139,19 @@ install: bintray
 ########################################################################
 ##                           Dependencies                             ##
 ########################################################################
-DEPS_DIR := $(PWD)/.deps
+DEPS_DIR := /tmp/mesos-ubuntu-12.04-deps
+DEPS_7ZS_DIR := $(DEPS_DIR)/.7zs
+DEPS_URL := https://dl.bintray.com/emccode/mesos-module-dvdi/ubuntu-12.04-build-deps
+USE_U1204_DEP = $(shell if [ "$(U1204)" != "" -a "$$(perl -e "\$$s=\`curl $(DEPS_URL)/$(1) --head --silent\`; \$$s=~m/(\\d{3})/;print \$$1")" -eq "200" ]; then printf "true"; else printf "false"; fi)
+USE_U1204_CACHED_DEP = $(shell if [ "$(U1204)" != "" -a -e "$(DEPS_7ZS_DIR)/$(1)" ]; then printf "true"; else printf "false"; fi)
 
 ########################################################################
 ##                            Subversion                              ##
 ########################################################################
 SVN_VER := 1.9.2
-SVN_TAR := subversion-$(SVN_VER).tar.bz2
-SVN_URL := http://apache.mirrors.tds.net/subversion
+SVN_SRC_TAR := subversion-$(SVN_VER).tar.bz2
+SVN_SRC_URL := http://apache.mirrors.tds.net/subversion
+SVN_OPT_7Z := subversion-$(SVN_VER).7z
 SVN_SRC_DIR := $(DEPS_DIR)/subversion-$(SVN_VER)/src
 SVN_OPT_DIR := $(DEPS_DIR)/subversion-$(SVN_VER)/opt
 SVN_CONFIGURE := $(SVN_SRC_DIR)/configure
@@ -145,25 +160,25 @@ SVN_SRC_BIN := $(SVN_SRC_DIR)/subversion/svn/svn
 SVN := $(SVN_OPT_DIR)/bin/svn
 
 SQLITE_VER := 3071501
-SQLITE_ZIP := sqlite-amalgamation-$(SQLITE_VER).zip
-SQLITE_URL := http://www.sqlite.org
-SQLITE_ZIP_DIR := $(SVN_SRC_DIR)/sqlite-amalgamation-$(SQLITE_VER)
+SQLITE_SRC_ZIP := sqlite-amalgamation-$(SQLITE_VER).zip
+SQLITE_SRC_URL := http://www.sqlite.org
+SQLITE_SRC_ZIP_DIR := $(SVN_SRC_DIR)/sqlite-amalgamation-$(SQLITE_VER)
 SQLITE_C := $(SVN_SRC_DIR)/sqlite-amalgamation/sqlite3.c
 
 svn-src: $(SVN_CONFIGURE)
 $(SVN_CONFIGURE):
 	mkdir -p $(@D) && cd $(@D) && \
-		curl -SLO $(SVN_URL)/$(SVN_TAR) && \
-		$(TARJZ) $(SVN_TAR) && \
-		rm -f $(SVN_TAR)
+		curl -SLO $(SVN_SRC_URL)/$(SVN_SRC_TAR) && \
+		$(TARJZ) $(SVN_SRC_TAR) && \
+		rm -f $(SVN_SRC_TAR)
 
 svn-sqlite: $(SQLITE_C)
 $(SQLITE_C): $(SVN_CONFIGURE)
 	cd $(<D) && \
-		curl -SLO $(SQLITE_URL)/$(SQLITE_ZIP) && \
-		unzip $(SQLITE_ZIP) && \
-		rm -fr $(SQLITE_ZIP) && \
-		mv $(SQLITE_ZIP_DIR) $(@D) && \
+		curl -SLO $(SQLITE_SRC_URL)/$(SQLITE_SRC_ZIP) && \
+		unzip $(SQLITE_SRC_ZIP) && \
+		rm -fr $(SQLITE_SRC_ZIP) && \
+		mv $(SQLITE_SRC_ZIP_DIR) $(@D) && \
 		touch $(@D) && touch $@
 
 svn-configure: $(SVN_MAKEFILE)
@@ -183,9 +198,24 @@ $(SVN_SRC_BIN): $(SVN_MAKEFILE)
 	cd $(<D) && $(MAKE)
 
 svn: $(SVN)
+ifeq ($(call USE_U1204_CACHED_DEP,$(SVN_OPT_7Z)),true)
+$(SVN):
+	cd $(DEPS_DIR) && \
+		7z x $(DEPS_7ZS_DIR)/$(SVN_OPT_7Z) > /dev/null
+else
+ifeq ($(call USE_U1204_DEP,$(SVN_OPT_7Z)),true)
+$(SVN):
+	mkdir -p $(DEPS_7ZS_DIR) && \
+		cd $(DEPS_7ZS_DIR) && \
+		curl -SLO $(DEPS_URL)/$(SVN_OPT_7Z) && \
+		cd $(DEPS_DIR) && \
+		7z x $(DEPS_7ZS_DIR)/$(SVN_OPT_7Z) > /dev/null
+else
 $(SVN): MAKEFLAGS=$(SVN_MAKEFLAGS)
 $(SVN): $(SVN_MAKEFILE) $(SVN_SRC_BIN)
 	cd $(<D) && $(MAKE) install
+endif
+endif
 
 svn-clean-src:
 	rm -fr $(SVN_SRC_DIR)
@@ -206,8 +236,9 @@ svn-touch:
 ##                               CMake                                ##
 ########################################################################
 CMAKE_VER := 3.3.2
-CMAKE_TAR := cmake-$(CMAKE_VER).tar.gz
-CMAKE_URL := https://cmake.org/files/v3.3
+CMAKE_SRC_TAR := cmake-$(CMAKE_VER).tar.gz
+CMAKE_SRC_URL := https://cmake.org/files/v3.3
+CMAKE_OPT_7Z := cmake-$(CMAKE_VER).7z
 CMAKE_SRC_DIR := $(DEPS_DIR)/cmake-$(CMAKE_VER)/src
 CMAKE_OPT_DIR := $(DEPS_DIR)/cmake-$(CMAKE_VER)/opt
 CMAKE_CONFIGURE := $(CMAKE_SRC_DIR)/configure
@@ -218,9 +249,9 @@ CMAKE := $(CMAKE_OPT_DIR)/bin/cmake
 cmake-src: $(CMAKE_CONFIGURE)
 $(CMAKE_CONFIGURE):
 	mkdir -p $(@D) && cd $(@D) && \
-		curl -SLO $(CMAKE_URL)/$(CMAKE_TAR) && \
-		$(TARGZ) $(CMAKE_TAR) && \
-		rm -f $(CMAKE_TAR)
+		curl -SLO $(CMAKE_SRC_URL)/$(CMAKE_SRC_TAR) && \
+		$(TARGZ) $(CMAKE_SRC_TAR) && \
+		rm -f $(CMAKE_SRC_TAR)
 
 ifeq "$(origin CMAKE_MAKEFLAGS)" "undefined"
 CMAKE_MAKEFLAGS := $(MAKEFLAGS)
@@ -240,9 +271,24 @@ $(CMAKE_SRC_BIN): $(CMAKE_MAKEFILE)
 	cd $(<D) && $(MAKE)
 
 cmake: $(CMAKE)
+ifeq ($(call USE_U1204_CACHED_DEP,$(CMAKE_OPT_7Z)),true)
+$(CMAKE):
+	cd $(DEPS_DIR) && \
+		7z x $(DEPS_7ZS_DIR)/$(CMAKE_OPT_7Z) > /dev/null
+else
+ifeq ($(call USE_U1204_DEP,$(CMAKE_OPT_7Z)),true)
+$(CMAKE):
+	mkdir -p $(DEPS_7ZS_DIR) && \
+		cd $(DEPS_7ZS_DIR) && \
+		curl -SLO $(DEPS_URL)/$(CMAKE_OPT_7Z) && \
+		cd $(DEPS_DIR) && \
+		7z x $(DEPS_7ZS_DIR)/$(CMAKE_OPT_7Z) > /dev/null
+else
 $(CMAKE): MAKEFLAGS=$(CMAKE_MAKEFLAGS)
 $(CMAKE): $(CMAKE_MAKEFILE) $(CMAKE_SRC_BIN)
 	cd $(<D) && $(MAKE) install && touch $@
+endif
+endif
 
 cmake-clean-src:
 	rm -fr $(CMAKE_SRC_DIR)
@@ -262,8 +308,9 @@ cmake-touch:
 ##                               GLog                                 ##
 ########################################################################
 GLOG_VER := 0.3.4
-GLOG_TAR := v$(GLOG_VER).tar.gz
-GLOG_URL := https://github.com/google/glog/archive
+GLOG_SRC_TAR := v$(GLOG_VER).tar.gz
+GLOG_SRC_URL := https://github.com/google/glog/archive
+GLOG_OPT_7Z := glog-$(GLOG_VER).7z
 GLOG_SRC_DIR := $(DEPS_DIR)/glog-$(GLOG_VER)/src
 GLOG_OPT_DIR := $(DEPS_DIR)/glog-$(GLOG_VER)/opt
 GLOG_CONFIGURE := $(GLOG_SRC_DIR)/configure
@@ -274,9 +321,9 @@ GLOG := $(GLOG_OPT_DIR)/lib/libglog.a
 glog-src: $(GLOG_CONFIGURE)
 $(GLOG_CONFIGURE):
 	mkdir -p $(@D) && cd $(@D) && \
-		curl -SLO $(GLOG_URL)/$(GLOG_TAR) && \
-		$(TARGZ) $(GLOG_TAR) && \
-		rm -f $(GLOG_TAR)
+		curl -SLO $(GLOG_SRC_URL)/$(GLOG_SRC_TAR) && \
+		$(TARGZ) $(GLOG_SRC_TAR) && \
+		rm -f $(GLOG_SRC_TAR)
 
 glog-configure: $(GLOG_MAKEFILE)
 $(GLOG_MAKEFILE): $(GLOG_CONFIGURE)
@@ -295,9 +342,24 @@ $(GLOG_SRC_LIB): $(GLOG_MAKEFILE)
 	cd $(<D) && $(MAKE)
 
 glog: $(GLOG)
+ifeq ($(call USE_U1204_CACHED_DEP,$(GLOG_OPT_7Z)),true)
+$(GLOG):
+	cd $(DEPS_DIR) && \
+		7z x $(DEPS_7ZS_DIR)/$(GLOG_OPT_7Z) > /dev/null
+else
+ifeq ($(call USE_U1204_DEP,$(GLOG_OPT_7Z)),true)
+$(GLOG):
+	mkdir -p $(DEPS_7ZS_DIR) && \
+		cd $(DEPS_7ZS_DIR) && \
+		curl -SLO $(DEPS_URL)/$(GLOG_OPT_7Z) && \
+		cd $(DEPS_DIR) && \
+		7z x $(DEPS_7ZS_DIR)/$(GLOG_OPT_7Z) > /dev/null
+else
 $(GLOG): MAKEFLAGS=$(CMAKE_MAKEFLAGS)
 $(GLOG): $(GLOG_MAKEFILE) $(GLOG_SRC_BIN)
 	cd $(<D) && $(MAKE) install
+endif
+endif
 
 glog-clean-src:
 	rm -fr $(GLOG_SRC_DIR)
@@ -317,14 +379,31 @@ glog-touch:
 ##                             PicoJSON                               ##
 ########################################################################
 PICOJSON_VER := 1.3.0
-PICOJSON_URL := https://raw.githubusercontent.com/kazuho/picojson
+PICOJSON_SRC_URL := https://raw.githubusercontent.com/kazuho/picojson
+PICOJSON_OPT_7Z := picojson-$(PICOJSON_VER).7z
+PICOJSON_OPT_URL := $(DEPS_URL)/$(PICOJSON_OPT_7Z)
 PICOJSON_OPT_DIR := $(DEPS_DIR)/picojson-$(PICOJSON_VER)/opt
 PICOJSON := $(PICOJSON_OPT_DIR)/include/picojson.h
 
 picojson: $(PICOJSON)
+ifeq ($(call USE_U1204_CACHED_DEP,$(PICOJSON_OPT_7Z)),true)
+$(PICOJSON):
+	cd $(DEPS_DIR) && \
+		7z x $(DEPS_7ZS_DIR)/$(PICOJSON_OPT_7Z) > /dev/null
+else
+ifeq ($(call USE_U1204_DEP,$(PICOJSON_OPT_7Z)),true)
+$(PICOJSON):
+	mkdir -p $(DEPS_7ZS_DIR) && \
+		cd $(DEPS_7ZS_DIR) && \
+		curl -SLO $(DEPS_URL)/$(PICOJSON_OPT_7Z) && \
+		cd $(DEPS_DIR) && \
+		7z x $(DEPS_7ZS_DIR)/$(PICOJSON_OPT_7Z) > /dev/null
+else
 $(PICOJSON):
 	mkdir -p $(@D) && cd $(@D) && \
-		curl -SLO $(PICOJSON_URL)/v$(PICOJSON_VER)/picojson.h
+		curl -SLO $(PICOJSON_SRC_URL)/v$(PICOJSON_VER)/picojson.h
+endif
+endif
 
 picojson-clean:
 	rm -fr $(PICOJSON_OPT_DIR)
@@ -335,16 +414,32 @@ picojson-clean:
 BOOST_VER := 1.59.0
 BOOST_VER_ := $(subst .,_,$(BOOST_VER))
 BOOST_TGZ := boost_$(BOOST_VER_).tar.gz
-BOOST_URL := http://downloads.sourceforge.net/project/boost/boost
+BOOST_SRC_URL := http://downloads.sourceforge.net/project/boost/boost
+BOOST_OPT_7Z := boost-$(BOOST_VER).7z
 BOOST_OPT_DIR := $(DEPS_DIR)/boost-$(BOOST_VER)/opt
 BOOST := $(BOOST_OPT_DIR)/INSTALL
 
 boost: $(BOOST)
+ifeq ($(call USE_U1204_CACHED_DEP,$(BOOST_OPT_7Z)),true)
+$(BOOST):
+	cd $(DEPS_DIR) && \
+		7z x $(DEPS_7ZS_DIR)/$(BOOST_OPT_7Z) > /dev/null
+else
+ifeq ($(call USE_U1204_DEP,$(BOOST_OPT_7Z)),true)
+$(BOOST):
+	mkdir -p $(DEPS_7ZS_DIR) && \
+		cd $(DEPS_7ZS_DIR) && \
+		curl -SLO $(DEPS_URL)/$(BOOST_OPT_7Z) && \
+		cd $(DEPS_DIR) && \
+		7z x $(DEPS_7ZS_DIR)/$(BOOST_OPT_7Z) > /dev/null
+else
 $(BOOST):
 	mkdir -p $(@D) && cd $(@D) && \
-		curl -SLO $(BOOST_URL)/$(BOOST_VER)/$(BOOST_TGZ) && \
+		curl -SLO $(BOOST_SRC_URL)/$(BOOST_VER)/$(BOOST_TGZ) && \
 		$(TARGZ) $(BOOST_TGZ) && \
 		rm -f $(BOOST_TGZ)
+endif
+endif
 
 boost-clean:
 	rm -fr $(BOOST_OPT_DIR)
@@ -354,16 +449,32 @@ boost-clean:
 ########################################################################
 BOTO_VER := 2.2.2
 BOTO_TGZ := python-boto_$(BOTO_VER).orig.tar.gz
-BOTO_URL := https://launchpad.net/ubuntu/+archive/primary/+files/
+BOTO_SRC_URL := https://launchpad.net/ubuntu/+archive/primary/+files/
+BOTO_OPT_7Z := boto-$(BOTO_VER).7z
 BOTO_OPT_DIR := $(DEPS_DIR)/boto-$(BOTO_VER)/opt
 BOTO := $(BOTO_OPT_DIR)/PKG-INFO
 
 boto: $(BOTO)
+ifeq ($(call USE_U1204_CACHED_DEP,$(BOTO_OPT_7Z)),true)
+$(BOTO):
+	cd $(DEPS_DIR) && \
+		7z x $(DEPS_7ZS_DIR)/$(BOTO_OPT_7Z) > /dev/null
+else
+ifeq ($(call USE_U1204_DEP,$(BOTO_OPT_7Z)),true)
+$(BOTO):
+	mkdir -p $(DEPS_7ZS_DIR) && \
+		cd $(DEPS_7ZS_DIR) && \
+		curl -SLO $(DEPS_URL)/$(BOTO_OPT_7Z) && \
+		cd $(DEPS_DIR) && \
+		7z x $(DEPS_7ZS_DIR)/$(BOTO_OPT_7Z) > /dev/null
+else
 $(BOTO):
 	mkdir -p $(@D) && cd $(@D) && \
-		curl -SLO $(BOTO_URL)/$(BOTO_TGZ) && \
+		curl -SLO $(BOTO_SRC_URL)/$(BOTO_TGZ) && \
 		$(TARGZ) $(BOTO_TGZ) && \
 		rm -f $(BOTO_TGZ)
+endif
+endif
 
 boto-clean:
 	rm -fr $(BOTO_OPT_DIR)
@@ -372,24 +483,24 @@ boto-clean:
 ##                              Protobuf                              ##
 ########################################################################
 PBUF_VER := 2.5.0
-PBUF_TAR := protobuf-$(PBUF_VER).tar.gz
-PBUF_URL := https://github.com/google/protobuf/releases/download
-PBUF_JAR_URL := http://search.maven.org/remotecontent?filepath=com/google/protobuf/protobuf-java/$(PBUF_VER)/protobuf-java-$(PBUF_VER).jar
+PBUF_SRC_TAR := protobuf-$(PBUF_VER).tar.gz
+PBUF_SRC_URL := https://github.com/google/protobuf/releases/download
+PBUF_OPT_7Z := protobuf-$(PBUF_VER).7z
+PBUF_JAR_SRC_URL := http://search.maven.org/remotecontent?filepath=com/google/protobuf/protobuf-java/$(PBUF_VER)/protobuf-java-$(PBUF_VER).jar
 PBUF_SRC_DIR := $(DEPS_DIR)/protobuf-$(PBUF_VER)/src
 PBUF_OPT_DIR := $(DEPS_DIR)/protobuf-$(PBUF_VER)/opt
 PBUF_CONFIGURE := $(PBUF_SRC_DIR)/configure
 PBUF_MAKEFILE := $(PBUF_SRC_DIR)/Makefile
 PBUF_SRC_BIN := $(PBUF_SRC_DIR)/src/protoc
 PBUF_OPT_BIN := $(PBUF_OPT_DIR)/bin/protoc
-PROTOBUF_JAR := $(PBUF_OPT_DIR)/share/java/protobuf.jar
-PROTOBUF := $(PBUF_OPT_BIN) $(PROTOBUF_JAR)
+PROTOBUF := $(PBUF_OPT_DIR)/share/java/protobuf.jar
 
 protobuf-src: $(PBUF_CONFIGURE)
 $(PBUF_CONFIGURE):
 	mkdir -p $(@D) && cd $(@D) && \
-		curl -SLO $(PBUF_URL)/v$(PBUF_VER)/$(PBUF_TAR) && \
-		$(TARGZ) $(PBUF_TAR) && \
-		rm -f $(PBUF_TAR)
+		curl -SLO $(PBUF_SRC_URL)/v$(PBUF_VER)/$(PBUF_SRC_TAR) && \
+		$(TARGZ) $(PBUF_SRC_TAR) && \
+		rm -f $(PBUF_SRC_TAR)
 
 protobuf-configure: $(PBUF_MAKEFILE)
 $(PBUF_MAKEFILE): $(PBUF_CONFIGURE)
@@ -412,13 +523,26 @@ $(PBUF_OPT_BIN): MAKEFLAGS=$(PROTOBUF_MAKEFLAGS)
 $(PBUF_OPT_BIN): $(PBUF_MAKEFILE) $(PBUF_SRC_BIN)
 	cd $(<D) && $(MAKE) install
 
-protobuf-jar: $(PROTOBUF_JAR)
-$(PROTOBUF_JAR): $(PBUF_OPT_BIN)
-	mkdir -p $(@D) && \
-		curl -SL -o protobuf.jar $(PBUF_JAR_URL) && \
-		touch $@
-
 protobuf: $(PROTOBUF)
+ifeq ($(call USE_U1204_CACHED_DEP,$(PBUF_OPT_7Z)),true)
+$(PROTOBUF):
+	cd $(DEPS_DIR) && \
+		7z x $(DEPS_7ZS_DIR)/$(PBUF_OPT_7Z) > /dev/null
+else
+ifeq ($(call USE_U1204_DEP,$(PBUF_OPT_7Z)),true)
+$(PROTOBUF):
+	mkdir -p $(DEPS_7ZS_DIR) && \
+		cd $(DEPS_7ZS_DIR) && \
+		curl -SLO $(DEPS_URL)/$(PBUF_OPT_7Z) && \
+		cd $(DEPS_DIR) && \
+		7z x $(DEPS_7ZS_DIR)/$(PBUF_OPT_7Z) > /dev/null
+else
+$(PROTOBUF): $(PBUF_OPT_BIN)
+	mkdir -p $(@D) && \
+		curl -SL -o protobuf.jar $(PBUF_JAR_SRC_URL) && \
+		touch $@
+endif
+endif
 
 protobuf-clean-src:
 	rm -fr $(PBUF_SRC_DIR)
@@ -449,8 +573,9 @@ endif
 
 define MESOS_BUILD_RULES
 MESOS_VER_$1 := $1
-MESOS_TAR_$1 := mesos-$$(MESOS_VER_$1).tar.gz
-MESOS_URL_$1 := http://archive.apache.org/dist/mesos
+MESOS_SRC_TAR_$1 := mesos-$$(MESOS_VER_$1).tar.gz
+MESOS_SRC_URL_$1 := http://archive.apache.org/dist/mesos
+MESOS_OPT_7Z_$1 := mesos-$$(MESOS_VER_$1).7z
 MESOS_SRC_DIR_$1 := $$(DEPS_DIR)/mesos-$$(MESOS_VER_$1)/src
 MESOS_OPT_DIR_$1 := $$(DEPS_DIR)/mesos-$$(MESOS_VER_$1)/opt
 MESOS_BUILD_DIR_$1 := $$(MESOS_SRC_DIR_$1)/build
@@ -462,9 +587,9 @@ MESOS_$1 := $$(MESOS_OPT_DIR_$1)/bin/mesos
 mesos-$1-src: $$(MESOS_CONFIGURE_$1)
 $$(MESOS_CONFIGURE_$1):
 	mkdir -p $$(@D) && cd $$(@D) && \
-		curl -SLO $$(MESOS_URL_$1)/$$(MESOS_VER_$1)/$$(MESOS_TAR_$1) && \
-		$$(TARGZ) $$(MESOS_TAR_$1) && \
-		rm -f $$(MESOS_TAR_$1) && \
+		curl -SLO $$(MESOS_SRC_URL_$1)/$$(MESOS_VER_$1)/$$(MESOS_SRC_TAR_$1) && \
+		$$(TARGZ) $$(MESOS_SRC_TAR_$1) && \
+		rm -f $$(MESOS_SRC_TAR_$1) && \
 		touch $$@
 
 mesos-$1-configure: $$(MESOS_MAKEFILE_$1)
@@ -495,9 +620,24 @@ $$(MESOS_SRC_BIN_$1): $$(MESOS_MAKEFILE_$1)
 	cd $$(<D) && $$(MAKE)
 
 mesos-$1: $$(MESOS_$1)
+ifeq ($$(call USE_U1204_CACHED_DEP,$$(MESOS_OPT_7Z_$1)),true)
+$$(MESOS_$1): $$(MESOS_DEPS)
+	cd $$(DEPS_DIR) && \
+		7z x $$(DEPS_7ZS_DIR)/$$(MESOS_OPT_7Z_$1) > /dev/null
+else
+ifeq ($$(call USE_U1204_DEP,$$(MESOS_OPT_7Z_$1)),true)
+$$(MESOS_$1): $$(MESOS_DEPS)
+	mkdir -p $$(DEPS_7ZS_DIR) && \
+		cd $$(DEPS_7ZS_DIR) && \
+		curl -SLO $$(DEPS_URL)/$$(MESOS_OPT_7Z_$1) && \
+		cd $$(DEPS_DIR) && \
+		7z x $$(DEPS_7ZS_DIR)/$$(MESOS_OPT_7Z_$1) > /dev/null
+else
 $$(MESOS_$1): MAKEFLAGS=$$(MESOS_MAKEFLAGS)
 $$(MESOS_$1): $$(MESOS_SRC_BIN_$1)
 	cd $$(<D) && $$(MAKE) install
+endif
+endif
 
 mesos-$1-clean-src:
 	rm -fr $$(MESOS_SRC_DIR_$1)
@@ -523,8 +663,9 @@ mesos: $(MESOS)
 ##                              Autoconf                              ##
 ########################################################################
 AUTOCONF_VER := 2.69
-AUTOCONF_TAR := autoconf-$(AUTOCONF_VER).tar.gz
-AUTOCONF_URL := http://ftp.gnu.org/gnu/autoconf
+AUTOCONF_SRC_TAR := autoconf-$(AUTOCONF_VER).tar.gz
+AUTOCONF_SRC_URL := http://ftp.gnu.org/gnu/autoconf
+AUTOCONF_OPT_7Z := autoconf-$(AUTOCONF_VER).7z
 AUTOCONF_SRC_DIR := $(DEPS_DIR)/autoconf-$(AUTOCONF_VER)/src
 AUTOCONF_OPT_DIR := $(DEPS_DIR)/autoconf-$(AUTOCONF_VER)/opt
 AUTOCONF_CONFIGURE := $(AUTOCONF_SRC_DIR)/configure
@@ -535,9 +676,9 @@ AUTOCONF := $(AUTOCONF_OPT_DIR)/bin/autoconf
 autoconf-src: $(AUTOCONF_CONFIGURE)
 $(AUTOCONF_CONFIGURE):
 	mkdir -p $(@D) && cd $(@D) && \
-		curl -SLO $(AUTOCONF_URL)/$(AUTOCONF_TAR) && \
-		$(TARGZ) $(AUTOCONF_TAR) && \
-		rm -f $(AUTOCONF_TAR)
+		curl -SLO $(AUTOCONF_SRC_URL)/$(AUTOCONF_SRC_TAR) && \
+		$(TARGZ) $(AUTOCONF_SRC_TAR) && \
+		rm -f $(AUTOCONF_SRC_TAR)
 
 autoconf-configure: $(AUTOCONF_MAKEFILE)
 $(AUTOCONF_MAKEFILE): $(AUTOCONF_CONFIGURE)
@@ -556,9 +697,24 @@ $(AUTOCONF_SRC_BIN): $(AUTOCONF_MAKEFILE)
 	cd $(<D) && $(MAKE)
 
 autoconf: $(AUTOCONF)
+ifeq ($(call USE_U1204_CACHED_DEP,$(AUTOCONF_OPT_7Z)),true)
+$(AUTOCONF):
+	cd $(DEPS_DIR) && \
+		7z x $(DEPS_7ZS_DIR)/$(AUTOCONF_OPT_7Z) > /dev/null
+else
+ifeq ($(call USE_U1204_DEP,$(AUTOCONF_OPT_7Z)),true)
+$(AUTOCONF):
+	mkdir -p $(DEPS_7ZS_DIR) && \
+		cd $(DEPS_7ZS_DIR) && \
+		curl -SLO $(DEPS_URL)/$(AUTOCONF_OPT_7Z) && \
+		cd $(DEPS_DIR) && \
+		7z x $(DEPS_7ZS_DIR)/$(AUTOCONF_OPT_7Z) > /dev/null
+else
 $(AUTOCONF): MAKEFLAGS=$(AUTOCONF_MAKEFLAGS)
 $(AUTOCONF): $(AUTOCONF_MAKEFILE) $(AUTOCONF_SRC_BIN)
 	cd $(<D) && $(MAKE) install
+endif
+endif
 
 autoconf-clean-src:
 	rm -fr $(AUTOCONF_SRC_DIR)
@@ -582,7 +738,7 @@ autoconf-touch:
 # ubuntu system then use docker for the build
 ifeq "$(origin USE_DOCKER)" "undefined"
 	ifeq "$(origin DEPS_JOB_ID)" "undefined"
-		ifneq (,$(findstring ubuntu,$(UNAME)))
+		ifneq (,$(U1204))
 			USE_DOCKER := false
 		else
 			USE_DOCKER := true
@@ -659,12 +815,12 @@ isolator-$1-clean:
 	rm -fr $$(ISO_WORK_DIR_$1)
 endef
 
-$(foreach V,$(MESOS_VERSIONS),$(eval $(call ISOLATOR_BUILD_RULES,$(V))))
+$(foreach V,$(ISO_VERSIONS),$(eval $(call ISOLATOR_BUILD_RULES,$(V))))
 
-isolator-src: $(addsuffix -src,$(addprefix isolator-,$(MESOS_VERSIONS)))
-isolator-bootstrap: $(addsuffix -bootstrap,$(addprefix isolator-,$(MESOS_VERSIONS)))
-isolator-configure: $(addsuffix -configure,$(addprefix isolator-,$(MESOS_VERSIONS)))
-isolator-clean: $(addsuffix -clean,$(addprefix isolator-,$(MESOS_VERSIONS)))
+isolator-src: $(addsuffix -src,$(addprefix isolator-,$(ISO_VERSIONS)))
+isolator-bootstrap: $(addsuffix -bootstrap,$(addprefix isolator-,$(ISO_VERSIONS)))
+isolator-configure: $(addsuffix -configure,$(addprefix isolator-,$(ISO_VERSIONS)))
+isolator-clean: $(addsuffix -clean,$(addprefix isolator-,$(ISO_VERSIONS)))
 isolator: $(ISOLATOR)
 
 bintray: bintray-unstable-filtered.json
