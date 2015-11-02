@@ -33,6 +33,7 @@
 #include <stout/protobuf.hpp>
 #include <stout/try.hpp>
 
+
 namespace mesos {
 namespace slave {
 
@@ -180,6 +181,7 @@ private:
   bool containsProhibitedChars(const std::string& s) const;
 
   std::ostream& dumpInfos(std::ostream& out) const;
+  std::string& myDumpInfos(std::string& out) const;
 
   using containermountmap =
     multihashmap<ContainerID, process::Owned<ExternalMount>>;

@@ -70,6 +70,144 @@ const char DockerVolumeDriverIsolatorProcess::prohibitedchars[NUM_PROHIBITED]  =
 
 std::string DockerVolumeDriverIsolatorProcess::mountJsonFilename;
 
+//DYV
+#include <stout/path.hpp>
+#include <slave/paths.hpp>
+#include <slave/state.hpp>
+using namespace mesos::internal::slave::paths;
+using namespace mesos::internal::slave::state;
+//DYV
+
+namespace mycheckpoint {
+
+	namespace internal {
+
+		inline Try<Nothing> checkpoint(
+		    const std::string& path,
+		    const std::string& message)
+		{
+		  return ::os::write(path, message);
+		}
+	}
+
+	template <typename T>
+	Try<Nothing> checkpoint(const std::string& path, const T& t)
+	{
+	  // Create the base directory.
+	  std::string base = Path(path).dirname();
+
+	  Try<Nothing> mkdir = os::mkdir(base);
+	  if (mkdir.isError()) {
+	    return Error("Failed to create directory '" + base + "': " + mkdir.error());
+	  }
+
+	  // NOTE: We create the temporary file at 'base/XXXXXX' to make sure
+	  // rename below does not cross devices (MESOS-2319).
+	  //
+	  // TODO(jieyu): It's possible that the temporary file becomes
+	  // dangling if slave crashes or restarts while checkpointing.
+	  // Consider adding a way to garbage collect them.
+	  Try<std::string> temp = os::mktemp(path::join(base, "XXXXXX"));
+	  if (temp.isError()) {
+	    return Error("Failed to create temporary file: " + temp.error());
+	  }
+
+	  // Now checkpoint the instance of T to the temporary file.
+	  Try<Nothing> checkpoint = internal::checkpoint(temp.get(), t);
+	  if (checkpoint.isError()) {
+	    // Try removing the temporary file on error.
+	    os::rm(temp.get());
+
+	    return Error("Failed to write temporary file '" + temp.get() +
+		         "': " + checkpoint.error());
+	  }
+
+	  // Rename the temporary file to the path.
+	  Try<Nothing> rename = os::rename(temp.get(), path);
+	  if (rename.isError()) {
+	    // Try removing the temporary file on error.
+	    os::rm(temp.get());
+
+	    return Error("Failed to rename '" + temp.get() + "' to '" +
+		         path + "': " + rename.error());
+	  }
+
+	  return Nothing();
+	}
+
+	Result<State> recover(const string& rootDir, bool strict)
+	{
+	  LOG(INFO) << "Recovering state from '" << rootDir << "'";
+
+	  // We consider the absence of 'rootDir' to mean that this is either
+	  // the first time this slave was started with checkpointing enabled
+	  // or this slave was started after an upgrade (--recover=cleanup).
+	  if (!os::exists(rootDir)) {
+	    return None();
+	  }
+
+	  // Now, start to recover state from 'rootDir'.
+	  State state;
+
+	  // Recover resources regardless whether the host has rebooted.
+	  Try<ResourcesState> resources = ResourcesState::recover(rootDir, strict);
+	  if (resources.isError()) {
+	    return Error(resources.error());
+	  }
+
+	  // TODO(jieyu): Do not set 'state.resources' if we cannot find the
+	  // resources checkpoint file.
+	  state.resources = resources.get();
+	
+	  // Did the machine reboot? No need to recover slave state if the
+	  // machine has rebooted.
+	  if (os::exists(getBootIdPath(rootDir))) {
+	    Try<string> read = os::read(getBootIdPath(rootDir));
+	    if (read.isSome()) {
+	      Try<string> id = os::bootId();
+	      CHECK_SOME(id);
+
+	      if (id.get() != strings::trim(read.get())) {
+		LOG(INFO) << "Slave host rebooted";
+		return state;
+	      }
+	    }
+	  }
+
+	  const std::string& latest = getLatestSlavePath(rootDir);
+
+	  // Check if the "latest" symlink to a slave directory exists.
+	  if (!os::exists(latest)) {
+	    // The slave was asked to shutdown or died before it registered
+	    // and had a chance to create the "latest" symlink.
+	    LOG(INFO) << "Failed to find the latest slave from '" << rootDir << "'";
+	    return state;
+	  }
+
+	  // Get the latest slave id.
+	  Result<string> directory = os::realpath(latest);
+	  if (!directory.isSome()) {
+	    return Error("Failed to find latest slave: " +
+		         (directory.isError()
+		          ? directory.error()
+		          : "No such file or directory"));
+	  }
+
+	  SlaveID slaveId;
+	  slaveId.set_value(Path(directory.get()).basename());
+
+	  Try<SlaveState> slave = SlaveState::recover(rootDir, slaveId, strict);
+	  if (slave.isError()) {
+	    return Error(slave.error());
+	  }
+
+	  state.slave = slave.get();
+
+	  return state;
+	}
+
+}
+
 DockerVolumeDriverIsolatorProcess::DockerVolumeDriverIsolatorProcess(
 	const Parameters& _parameters)
   : parameters(_parameters) {}
@@ -86,7 +224,9 @@ Try<Isolator*> DockerVolumeDriverIsolatorProcess::create(const Parameters& param
     return Error("DockerVolumeDriverIsolator requires root privileges");
   }
 
+  LOG(INFO) << "------------------------DYV------------------------";
   LOG(INFO) << "create() called";
+  LOG(INFO) << "------------------------DYV------------------------";
   mountJsonFilename = DVDI_MOUNTLIST_DEFAULT_DIR;
 
   foreach (const Parameter& parameter, parameters.parameter()) {
@@ -132,7 +272,9 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
     const list<ExecutorRunState>& states,
     const hashset<ContainerID>& orphans)
 {
+  LOG(INFO) << "------------------------DYV------------------------";
   LOG(INFO) << "DockerVolumeDriverIsolatorProcess recover() was called";
+  LOG(INFO) << "------------------------DYV------------------------";
 
   // Slave recovery is a feature of Mesos that allows task/executors
   // to keep running if a slave process goes down, AND
@@ -154,6 +296,141 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
   // This is because some of the ContainerIDs present when it was recorded may now be gone.
   // The key is a string rendering of the ContainerID but not a ContainerID
   multihashmap<std::string, process::Owned<ExternalMount>> originalContainerMounts;
+  multihashmap<std::string, process::Owned<ExternalMount>> myOriginalContainerMounts;
+
+  //DYV
+  // Recover the state.
+  //TODO: code looks like mycheckpoint::recover(getMetaRootDir(flags.work_dir), true)
+  //TODO: but we dont have the flags.work_dir yet. Hardcoded for Clint's env /tmp/mesos
+  LOG(INFO) << "mycheckpoint::recover() called";
+  Result<State> recover = mycheckpoint::recover("/tmp/mesos", true);
+
+  State state = recover.get();
+  LOG(INFO) << "mycheckpoint::recover() returned: " << state.errors;
+
+  if (state.errors != 0) {
+  	LOG(INFO) << "recover state error:" << state.errors;
+  	return Nothing();
+  }
+
+  std::string myFile = path::join(getMetaRootDir("/tmp/mesos"), "mine.json");
+
+  std::ifstream myIfs(myFile);
+
+  if (!os::exists(myFile)) {
+    LOG(INFO) << "no mount json file exists at " << myFile
+              << " so there are no mounts to recover";
+    return Nothing();
+  }
+
+  LOG(INFO) << "parsing mount json file(" << myFile
+            << ") in recover()";
+
+  std::istream_iterator<char> myInput(myIfs);
+
+  LOG(INFO) << "------------------------DYV1------------------------";
+
+  picojson::value myJson;
+  std::string myError;
+  myInput = picojson::parse(myJson, myInput, std::istream_iterator<char>(), &myError);
+  if (! myError.empty()) {
+  	LOG(INFO) << "picojson parse error:" << myError;
+  	return Nothing();
+  }
+
+  LOG(INFO) << "------------------------DYV2------------------------";
+
+  // check if the type of the value is "object"
+  if (! myJson.is<picojson::object>()) {
+  	LOG(INFO) << "parsed JSON is not an object";
+  	return Nothing();
+  }
+
+  LOG(INFO) << "------------------------DYV3------------------------";
+
+  size_t myRecoveredMountCount = 0;
+
+  picojson::array myMountlist = myJson.get("mounts").get<picojson::array>();
+  for (picojson::array::iterator iter = myMountlist.begin(); iter != myMountlist.end(); ++iter) {
+    LOG(INFO) << "{";
+  	LOG(INFO) << "(*iter):" << (*iter).to_str() << (*iter).serialize();
+  	LOG(INFO) << "(*iter) contains containerid:" << (*iter).contains("containerid");
+  	LOG(INFO) << "(*iter) contains volumename:" << (*iter).contains("volumename");
+  	LOG(INFO) << "(*iter) contains volumedriver:" << (*iter).contains("volumedriver");
+  	LOG(INFO) << "(*iter) contains mountoptions:" << (*iter).contains("mountoptions");
+  	LOG(INFO) << "(*iter) contains mountpoint:" << (*iter).contains("mountpoint");
+
+  	if ((*iter).contains("containerid") &&
+  	    (*iter).contains("volumename") &&
+        (*iter).contains("volumedriver") &&
+        (*iter).contains("mountoptions") &&
+        (*iter).contains("mountpoint")) {
+      std::string containerid((*iter).get("containerid").get<string>().c_str());
+      LOG(INFO) << "containerid:" << containerid;
+
+      std::string mountOptions = (*iter).get("mountoptions").get<string>().c_str();
+      LOG(INFO) << "mountOptions:" << mountOptions;
+
+      std::string mountpoint = (*iter).get("mountpoint").get<string>().c_str();
+      LOG(INFO) << "mountpoint:" << mountpoint;
+
+      std::string deviceDriverName((*iter).get("volumedriver").get<string>().c_str());
+      LOG(INFO) << "deviceDriverName:" << deviceDriverName;
+      if (containsProhibitedChars(deviceDriverName)) {
+        LOG(ERROR) << "volumedriver element in json contains an illegal character, "
+                   << "mount will be ignored";
+        deviceDriverName.clear();
+      }
+
+      std::string volumeName((*iter).get("volumename").get<string>().c_str());
+      LOG(INFO) << "volumeName:" << volumeName;
+      if (containsProhibitedChars(volumeName)) {
+        LOG(ERROR) << "volumename element in json contains an illegal character, "
+                   << "mount will be ignored";
+        volumeName.clear();
+      }
+      LOG(INFO) << "}";
+
+      if (!containerid.empty() && !volumeName.empty()) {
+        myRecoveredMountCount++;
+        process::Owned<ExternalMount> mount(
+            new ExternalMount(deviceDriverName,
+                              volumeName,
+                              mountOptions,
+                              mountpoint));
+        myOriginalContainerMounts.put(containerid, mount);
+      }
+  	}
+  }
+
+  LOG(INFO) << "------------------------DYV------------------------";
+
+  LOG(INFO) << "parsed /tmp/mesos/mine.json and found evidence of " << myRecoveredMountCount
+            << " previous active external mounts in recover()";
+
+  // both maps starts empty, we will iterate to populate
+
+  // populate legacyMounts with all mounts at time file was written
+  // note: some of the tasks using these may be gone now
+  for (const auto &elem : myOriginalContainerMounts) {
+    // elem->second is ExternalMount,
+    LOG(INFO) << "legacyMounts add: " << elem.second.get()->getExternalMountId() << ":" << elem.second.get()->volumeName << ":" << elem.second.get()->mountpoint;
+  }
+
+  foreach (const ExecutorRunState& state, states) {
+    if (myOriginalContainerMounts.contains(state.id.value())) {
+      // we found a task that is still running and has mounts
+      LOG(INFO) << "running container(" << state.id << ") re-identified on recover()";
+      LOG(INFO) << "state.directory is (" << state.directory << ")";
+      std::list<process::Owned<ExternalMount>> mountsForContainer =
+          originalContainerMounts.get(state.id.value());
+      for (const auto &iter : mountsForContainer) {
+        // copy task element to rebuild infos
+        LOG(INFO) << "re-identified a preserved mount, id is " << iter->getExternalMountId();
+      }
+    }
+  }
+  //DYV
 
   // read container mounts from filesystem
   std::ifstream ifs(mountJsonFilename);
@@ -282,6 +559,15 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
   infosout.flush();
   infosout.close();
 
+  //DYV
+  //TODO: code looks like mycheckpoint::recover(getMetaRootDir(flags.work_dir), true)
+  //TODO: but we dont have the flags.work_dir yet. Hardcoded for Clint's env /tmp/mesos
+  std::string myJsonFilename = path::join(getMetaRootDir("/tmp/mesos"), "mine.json");
+  std::string myinfosout;
+  myDumpInfos(myinfosout);
+  mycheckpoint::checkpoint(myJsonFilename, myinfosout);
+  //DYV
+
   // we will now reduce legacyMounts to only the mounts that should be removed
   // we will do this by deleting the mounts still in use
   for( const auto &iter : inUseMounts) {
@@ -407,6 +693,35 @@ std::ostream& DockerVolumeDriverIsolatorProcess::dumpInfos(std::ostream& out) co
     delimiter = ",\n";
   }
   out << "\n]}\n";
+  return out;
+}
+
+std::string& DockerVolumeDriverIsolatorProcess::myDumpInfos(std::string& out) const
+{
+  out += "{\"mounts\": [\n";
+  std::string delimiter = "";
+  for (const auto &ent : infos) {
+    out += delimiter;
+    out += "{\n";
+    out += "\"containerid\": \"";
+    out += ent.first.value();
+    out += "\",\n";
+    out += "\"volumedriver\": \"";
+    out += ent.second.get()->deviceDriverName;
+    out += "\",\n";
+    out +=  "\"volumename\": \"";
+    out += ent.second.get()->volumeName;
+    out += "\",\n";
+    out += "\"mountoptions\": \"";
+    out +=  ent.second.get()->mountOptions;
+    out +=  "\",\n";
+    out += "\"mountpoint\": \"";
+    out += ent.second.get()->mountpoint;
+    out += "\"\n";
+    out +=  "}";
+    delimiter = ",\n";
+  }
+  out += "\n]}\n";
   return out;
 }
 
@@ -623,6 +938,15 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
   infosout.flush();
   infosout.close();
 
+  //DYV
+  //TODO: code looks like mycheckpoint::recover(getMetaRootDir(flags.work_dir), true)
+  //TODO: but we dont have the flags.work_dir yet. Hardcoded for Clint's env /tmp/mesos
+  std::string myJsonFilename = path::join(getMetaRootDir("/tmp/mesos"), "mine.json");
+  std::string myinfosout;
+  myDumpInfos(myinfosout);
+  mycheckpoint::checkpoint(myJsonFilename, myinfosout);
+  //DYV
+
   return None();
 }
 
@@ -700,6 +1024,15 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::cleanup(
   dumpInfos(infosout);
   infosout.flush();
   infosout.close();
+
+  //DYV
+  //TODO: code looks like mycheckpoint::recover(getMetaRootDir(flags.work_dir), true)
+  //TODO: but we dont have the flags.work_dir yet. Hardcoded for Clint's env /tmp/mesos
+  std::string myJsonFilename = path::join(getMetaRootDir("/tmp/mesos"), "mine.json");
+  std::string myinfosout;
+  myDumpInfos(myinfosout);
+  mycheckpoint::checkpoint(myJsonFilename, myinfosout);
+  //DYV
 
   return Nothing();
 
