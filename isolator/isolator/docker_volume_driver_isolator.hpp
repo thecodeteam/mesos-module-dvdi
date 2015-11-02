@@ -51,8 +51,8 @@ public:
   // of container states which will assist in recovery,
   // when this is available, code should use it.
   virtual process::Future<Nothing> recover(
-      const std::list<mesos::slave::ExecutorRunState>& states,
-      const hashset<ContainerID>& orphans);
+    const std::list<mesos::slave::ExecutorRunState>& states,
+    const hashset<ContainerID>& orphans);
 
   // Prepare runs BEFORE a task is started
   // will check if the volume is already mounted and if not,
@@ -73,29 +73,29 @@ public:
   //    actual call is defined below in DVDCLI_MOUNT_CMD
   // 5. Add entry to hashmap that contains root mountpath indexed by ContainerId
   virtual process::Future<Option<CommandInfo>> prepare(
-      const ContainerID& containerId,
-      const ExecutorInfo& executorInfo,
-      const std::string& directory,
-      const Option<std::string>& rootfs,
-      const Option<std::string>& user);
+    const ContainerID& containerId,
+    const ExecutorInfo& executorInfo,
+    const std::string& directory,
+    const Option<std::string>& rootfs,
+    const Option<std::string>& user);
 
   // Nothing will be done at task start
   virtual process::Future<Nothing> isolate(
-      const ContainerID& containerId,
+    const ContainerID& containerId,
       pid_t pid);
 
   // no-op, mount occurs at prepare
   virtual process::Future<mesos::slave::Limitation> watch(
-      const ContainerID& containerId);
+    const ContainerID& containerId);
 
   // no-op, nothing enforced
   virtual process::Future<Nothing> update(
-      const ContainerID& containerId,
-      const Resources& resources);
+    const ContainerID& containerId,
+    const Resources& resources);
 
   // no-op, no usage stats gathered
   virtual process::Future<ResourceStatistics> usage(
-      const ContainerID& containerId);
+    const ContainerID& containerId);
 
   // will (possibly) unmount here
   // 1. Get mount root path by looking up based on ContainerId
@@ -104,7 +104,7 @@ public:
   //     dvdcli unmount defined in DVDCLI_UNMOUNT_CMD below
   // 4. Remove the listing for this task's mount from hashmap
   virtual process::Future<Nothing> cleanup(
-      const ContainerID& containerId);
+    const ContainerID& containerId);
 
 private:
   DockerVolumeDriverIsolatorProcess(const Parameters& parameters);
@@ -116,35 +116,35 @@ private:
   struct ExternalMount
   {
     explicit ExternalMount(
-        const std::string& _deviceDriverName,
-        const std::string& _volumeName,
-		const std::string& _mountOptions)
-      : deviceDriverName(_deviceDriverName),
-		volumeName(_volumeName),
-		mountOptions(_mountOptions),
-		mountpoint() {}
+      const std::string& _deviceDriverName,
+      const std::string& _volumeName,
+      const std::string& _mountOptions)
+        : deviceDriverName(_deviceDriverName),
+          volumeName(_volumeName),
+          mountOptions(_mountOptions),
+          mountpoint() {}
 
     explicit ExternalMount(
-        const std::string& _deviceDriverName,
-        const std::string& _volumeName,
-		const std::string& _mountOptions,
-        const std::string& _mountpoint)
-      : deviceDriverName(_deviceDriverName),
-		volumeName(_volumeName),
-		mountOptions(_mountOptions),
-		mountpoint(_mountpoint) {}
+      const std::string& _deviceDriverName,
+      const std::string& _volumeName,
+      const std::string& _mountOptions,
+      const std::string& _mountpoint)
+        : deviceDriverName(_deviceDriverName),
+          volumeName(_volumeName),
+          mountOptions(_mountOptions),
+          mountpoint(_mountpoint) {}
 
     bool operator ==(const ExternalMount& other) {
-    	return getExternalMountId() == other.getExternalMountId();
+      return getExternalMountId() == other.getExternalMountId();
     }
 
     ExternalMountID getExternalMountId(void) const {
-        size_t seed = 0;
-        std::string s1(boost::to_lower_copy(deviceDriverName));
-        std::string s2(boost::to_lower_copy(volumeName));
-        boost::hash_combine(seed, s1);
-        boost::hash_combine(seed, s2);
-        return seed;
+      size_t seed = 0;
+      std::string s1(boost::to_lower_copy(deviceDriverName));
+      std::string s2(boost::to_lower_copy(volumeName));
+      boost::hash_combine(seed, s1);
+      boost::hash_combine(seed, s2);
+      return seed;
     }
 
     // We save the full root path of any mounted device here.
@@ -166,14 +166,14 @@ private:
 
   // Attempts to unmount specified external mount, returns true on success
   bool unmount(
-      const ExternalMount& em,
-      const std::string&   callerLabelForLogging ) const;
+    const ExternalMount& em,
+    const std::string&   callerLabelForLogging) const;
 
   // Attempts to mount specified external mount,
   // returns non-empty string on success
   std::string mount(
-      const ExternalMount& em,
-      const std::string&   callerLabelForLogging) const;
+    const ExternalMount& em,
+    const std::string&   callerLabelForLogging) const;
 
   // Returns true if string contains at least one prohibited character
   // as defined in the list below.
