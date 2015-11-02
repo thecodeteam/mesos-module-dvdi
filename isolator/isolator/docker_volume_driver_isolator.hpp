@@ -180,8 +180,7 @@ private:
   // This is intended as a tool to detect injection attack attempts.
   bool containsProhibitedChars(const std::string& s) const;
 
-  std::ostream& dumpInfos(std::ostream& out) const;
-  std::string& myDumpInfos(std::string& out) const;
+  std::string& dumpInfos(std::string& out) const;
 
   using containermountmap =
     multihashmap<ContainerID, process::Owned<ExternalMount>>;
@@ -211,11 +210,16 @@ private:
   static constexpr const char* VOL_OPTS_ENV_VAR_NAME     = "DVDI_VOLUME_OPTS";
   static constexpr const char* JSON_VOLS_ENV_VAR_NAME    = "DVDI_VOLS_JSON_ARRAY";
 
-  static constexpr const char* DVDI_MOUNTLIST_DEFAULT_DIR= "/var/lib/mesos/dvdi/";
+  //TODO this is temporary until the working_dir is exposed by mesosphere dev
+  static constexpr const char* DVDI_MOUNTLIST_DEFAULT_DIR= "/tmp/mesos/";
   static constexpr const char* DVDI_MOUNTLIST_FILENAME   = "dvdimounts.json";
   static constexpr const char* DVDI_WORKDIR_PARAM_NAME   = "work_dir";
 
+  //TODO this is temporary until the working_dir is exposed by mesosphere dev
+  static constexpr const char* DEFAULT_WORKING_DIR       = "/tmp/mesos";
+
   static std::string mountJsonFilename;
+  static std::string mesosWorkingDir;
 };
 
 } /* namespace slave */
