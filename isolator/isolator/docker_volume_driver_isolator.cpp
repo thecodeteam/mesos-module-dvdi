@@ -68,9 +68,148 @@ const char DockerVolumeDriverIsolatorProcess::prohibitedchars[NUM_PROHIBITED]  =
 };
 
 std::string DockerVolumeDriverIsolatorProcess::mountJsonFilename;
+std::string DockerVolumeDriverIsolatorProcess::mesosWorkingDir;
+
+
+//TODO temporary code until checkpoints are public by mesosphere dev
+#include <stout/path.hpp>
+#include <slave/paths.hpp>
+#include <slave/state.hpp>
+using namespace mesos::internal::slave::paths;
+using namespace mesos::internal::slave::state;
+
+namespace dvdicheckpoint
+{
+
+  inline Try<Nothing> checkpoint(
+    const std::string& path,
+    const std::string& message)
+  {
+    return ::os::write(path, message);
+  }
+
+  template <typename T>
+  Try<Nothing> checkpoint(const std::string& path, const T& t)
+  {
+    // Create the base directory.
+    std::string base = Path(path).dirname();
+
+    Try<Nothing> mkdir = os::mkdir(base);
+    if (mkdir.isError()) {
+      return Error("Failed to create directory '" + base + "': " + mkdir.error());
+    }
+
+    // NOTE: We create the temporary file at 'base/XXXXXX' to make sure
+    // rename below does not cross devices (MESOS-2319).
+    //
+    // TODO(jieyu): It's possible that the temporary file becomes
+    // dangling if slave crashes or restarts while checkpointing.
+    // Consider adding a way to garbage collect them.
+    Try<std::string> temp = os::mktemp(path::join(base, "XXXXXX"));
+    if (temp.isError()) {
+      return Error("Failed to create temporary file: " + temp.error());
+    }
+
+    // Now checkpoint the instance of T to the temporary file.
+    Try<Nothing> checkpoint = checkpoint(temp.get(), t);
+    if (checkpoint.isError()) {
+      // Try removing the temporary file on error.
+      os::rm(temp.get());
+
+      return Error("Failed to write temporary file '" + temp.get() +
+      "': " + checkpoint.error());
+    }
+
+    // Rename the temporary file to the path.
+    Try<Nothing> rename = os::rename(temp.get(), path);
+    if (rename.isError()) {
+      // Try removing the temporary file on error.
+      os::rm(temp.get());
+
+      return Error("Failed to rename '" + temp.get() + "' to '" +
+      path + "': " + rename.error());
+    }
+
+    return Nothing();
+  }
+
+  Result<State> recover(const string& rootDir, bool strict)
+  {
+    LOG(INFO) << "Recovering state from '" << rootDir << "'";
+
+    // We consider the absence of 'rootDir' to mean that this is either
+    // the first time this slave was started with checkpointing enabled
+    // or this slave was started after an upgrade (--recover=cleanup).
+    if (!os::exists(rootDir)) {
+      return None();
+    }
+
+    // Now, start to recover state from 'rootDir'.
+    State state;
+
+    // Recover resources regardless whether the host has rebooted.
+    Try<ResourcesState> resources = ResourcesState::recover(rootDir, strict);
+    if (resources.isError()) {
+      return Error(resources.error());
+    }
+
+    // TODO(jieyu): Do not set 'state.resources' if we cannot find the
+    // resources checkpoint file.
+    state.resources = resources.get();
+
+    // Did the machine reboot? No need to recover slave state if the
+    // machine has rebooted.
+    if (os::exists(getBootIdPath(rootDir))) {
+      Try<string> read = os::read(getBootIdPath(rootDir));
+      if (read.isSome()) {
+        Try<string> id = os::bootId();
+        CHECK_SOME(id);
+
+        if (id.get() != strings::trim(read.get())) {
+          LOG(INFO) << "Slave host rebooted";
+          return state;
+        }
+      }
+    }
+
+    const std::string& latest = getLatestSlavePath(rootDir);
+
+    // Check if the "latest" symlink to a slave directory exists.
+    if (!os::exists(latest)) {
+      // The slave was asked to shutdown or died before it registered
+      // and had a chance to create the "latest" symlink.
+      LOG(INFO) << "Failed to find the latest slave from '" << rootDir << "'";
+      return state;
+    }
+
+    // Get the latest slave id.
+    Result<string> directory = os::realpath(latest);
+    if (!directory.isSome()) {
+      return Error("Failed to find latest slave: " +
+      (directory.isError()
+      ? directory.error()
+      : "No such file or directory"));
+    }
+
+    SlaveID slaveId;
+    slaveId.set_value(Path(directory.get()).basename());
+
+    Try<SlaveState> slave = SlaveState::recover(rootDir, slaveId, strict);
+    if (slave.isError()) {
+      return Error(slave.error());
+    }
+
+    state.slave = slave.get();
+
+    return state;
+  }
+
+}
+//TODO temporary until checkpoints are public by mesosphere dev
+
 
 DockerVolumeDriverIsolatorProcess::DockerVolumeDriverIsolatorProcess(
-const Parameters& _parameters)
+  const Parameters& _parameters)
   : parameters(_parameters) {}
 
 Try<Isolator*> DockerVolumeDriverIsolatorProcess::create(
@@ -88,16 +227,20 @@ Try<Isolator*> DockerVolumeDriverIsolatorProcess::create(
 
   LOG(INFO) << "DockerVolumeDriverIsolator::create() called";
   mountJsonFilename = DVDI_MOUNTLIST_DEFAULT_DIR;
+  //TODO: we dont have the flags.work_dir yet. Hardcoded for Clint's env /tmp/mesos
+  mesosWorkingDir = DEFAULT_WORKING_DIR;
 
   foreach (const Parameter& parameter, parameters.parameter()) {
-
     if (parameter.key() == DVDI_WORKDIR_PARAM_NAME) {
-      LOG(INFO) << "Parameter " << parameter.key() << ":" << parameter.value();
+      LOG(INFO) << "parameter " << parameter.key() << ":" << parameter.value();
 
       if (parameter.value().length() > 2 &&
           strings::startsWith(parameter.value(), "/") &&
           strings::endsWith(parameter.value(), "/")) {
         mountJsonFilename = parameter.value();
+
+        mesosWorkingDir = parameter.value();
+
       } else {
         std::stringstream ss;
         ss << "DockerVolumeDriverIsolator " << DVDI_WORKDIR_PARAM_NAME
@@ -107,21 +250,9 @@ Try<Isolator*> DockerVolumeDriverIsolatorProcess::create(
     }
   }
 
-  if (!os::exists(mountJsonFilename)) {
-    Try<Nothing> mkdir = os::mkdir(mountJsonFilename);
 
-    if (mkdir.isError()) {
-      std::stringstream ss;
-      ss << "DockerVolumeDriverIsolator could not create work_dir: "
-         << mountJsonFilename;
-      return Error(ss.str());
-    }
-  } else if (!os::stat::isdir(mountJsonFilename)) {
-    return Error(mountJsonFilename + " is not a directory");
-  }
-
-  mountJsonFilename.append(DVDI_MOUNTLIST_FILENAME);
-  LOG(INFO) << "DockerVolumeDriverIsolator using " << mountJsonFilename;
+  mountJsonFilename = path::join(getMetaRootDir(mesosWorkingDir), DVDI_MOUNTLIST_FILENAME);
+  LOG(INFO) << "using " << mountJsonFilename;
 
   process::Owned<IsolatorProcess> process(
       new DockerVolumeDriverIsolatorProcess(parameters));
@@ -159,6 +290,19 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
   // ContainerID but not a ContainerID.
   multihashmap<std::string, process::Owned<ExternalMount>>
       originalContainerMounts;
+
+  // Recover the state.
+  //TODO: need public version of recover
+  LOG(INFO) << "dvdicheckpoint::recover() called";
+  Result<State> recover = dvdicheckpoint::recover(mesosWorkingDir, true);
+
+  State state = recover.get();
+  LOG(INFO) << "dvdicheckpoint::recover() returned: " << state.errors;
+
+  if (state.errors != 0) {
+    LOG(INFO) << "recover state error:" << state.errors;
+    return Nothing();
+  }
 
   // read container mounts from filesystem
   std::ifstream ifs(mountJsonFilename);
@@ -298,12 +442,10 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
     }
   }
 
-  // infos has now been rebuilt for every task now running.
-  // Flush the infos structure to disk.
-  std::ofstream infosout(mountJsonFilename);
-  dumpInfos(infosout);
-  infosout.flush();
-  infosout.close();
+  //checkpoint the dvdi mounts for persistence
+  std::string myinfosout;
+  dumpInfos(myinfosout);
+  dvdicheckpoint::checkpoint(mountJsonFilename, myinfosout);
 
   // We will now reduce legacyMounts to only the mounts that should be removed.
   // We will do this by deleting the mounts still in use.
@@ -330,47 +472,49 @@ bool DockerVolumeDriverIsolatorProcess::unmount(
     const ExternalMount& em,
     const std::string&   callerLabelForLogging ) const
 {
-    LOG(INFO) << em << " is being unmounted on " << callerLabelForLogging;
+  LOG(INFO) << em << " is being unmounted on " << callerLabelForLogging;
 
-    if (system(NULL)) { // Is a command processor available?
+  if (system(NULL)) { // Is a command processor available?
 
-      LOG(INFO) << "Invoking " << DVDCLI_UNMOUNT_CMD << " "
-                << VOL_DRIVER_CMD_OPTION << em.deviceDriverName << " "
-                << VOL_NAME_CMD_OPTION << em.volumeName;
-      std::ostringstream cmdOut;
-      Try<int> retcode = os::shell(&cmdOut, "%s %s%s %s%s",
-              DVDCLI_UNMOUNT_CMD,
-              VOL_DRIVER_CMD_OPTION, em.deviceDriverName.c_str(),
-              VOL_NAME_CMD_OPTION, em.volumeName.c_str());
+    LOG(INFO) << "Invoking " << DVDCLI_UNMOUNT_CMD << " "
+              << VOL_DRIVER_CMD_OPTION << em.deviceDriverName << " "
+              << VOL_NAME_CMD_OPTION << em.volumeName;
+    std::ostringstream cmdOut;
+    Try<int> retcode = os::shell(&cmdOut, "%s %s%s %s%s",
+      DVDCLI_UNMOUNT_CMD,
+      VOL_DRIVER_CMD_OPTION,
+      em.deviceDriverName.c_str(),
+      VOL_NAME_CMD_OPTION,
+      em.volumeName.c_str());
 
-      if (retcode.isError()) {
+    if (retcode.isError()) {
 
-        LOG(WARNING) << DVDCLI_UNMOUNT_CMD << " failed to execute on "
-                     << callerLabelForLogging
-                     << ", continuing on the assumption this volume was "
-                     << "manually unmounted previously "
-                     << retcode.error();
-      } else {
-
-        if (retcode.get() == ECHILD) {
-          LOG(WARNING) << "Pclose could not obtain cmd execute status";
-        } else if (retcode.get() != 0) {
-          LOG(WARNING) << DVDCLI_UNMOUNT_CMD << " returned errorcode "
-                       << retcode.get()
-                       << ", continuing on the assumption this volume was "
-                       << "manually unmounted previously";
-        }
-
-        if (!cmdOut.str().empty()) {
-          LOG(INFO) << DVDCLI_UNMOUNT_CMD << " returned " << cmdOut.str();
-        }
-      }
+      LOG(WARNING) << DVDCLI_UNMOUNT_CMD << " failed to execute on "
+                   << callerLabelForLogging
+                   << ", continuing on the assumption this volume was "
+                   << "manually unmounted previously "
+                   << retcode.error();
     } else {
-      LOG(ERROR) << "Failed to acquire a command processor for unmount on "
-                 << callerLabelForLogging;
-      return false;
+
+      if (retcode.get() == ECHILD) {
+        LOG(WARNING) << "Pclose could not obtain cmd execute status";
+      } else if (retcode.get() != 0) {
+        LOG(WARNING) << DVDCLI_UNMOUNT_CMD << " returned errorcode "
+                     << retcode.get()
+                     << ", continuing on the assumption this volume was "
+                     << "manually unmounted previously";
+      }
+
+      if (!cmdOut.str().empty()) {
+        LOG(INFO) << DVDCLI_UNMOUNT_CMD << " returned " << cmdOut.str();
+      }
     }
-    return true;
+  } else {
+    LOG(ERROR) << "failed to acquire a command processor for unmount on "
+               << callerLabelForLogging;
+    return false;
+  }
+  return true;
 }
 
 // Attempts to mount specified external mount, returns true on success.
@@ -378,79 +522,89 @@ std::string DockerVolumeDriverIsolatorProcess::mount(
     const ExternalMount& em,
     const std::string&   callerLabelForLogging) const
 {
-    LOG(INFO) << em << " is being mounted on " << callerLabelForLogging;
-    const std::string volumeDriver = em.deviceDriverName;
-    const std::string volumeName = em.volumeName;
-    std::string mountpoint; // Return value init'd to empty.
+  LOG(INFO) << em << " is being mounted on " << callerLabelForLogging;
+  const std::string volumeDriver = em.deviceDriverName;
+  const std::string volumeName = em.volumeName;
+  std::string mountpoint; // Return value init'd to empty.
 
-    // Parse and format volume options.
-    std::stringstream ss(em.mountOptions);
-    std::string opts;
+  // Parse and format volume options.
+  std::stringstream ss(em.mountOptions);
+  std::string opts;
 
-    while( ss.good() )
-    {
-      string substr;
-      getline( ss, substr, ',' );
-      opts = opts + " " + VOL_OPTS_CMD_OPTION + substr;
-    }
+  while( ss.good() )  {
+    string substr;
+    getline( ss, substr, ',' );
+    opts = opts + " " + VOL_OPTS_CMD_OPTION + substr;
+  }
 
-    if (system(NULL)) { // Is a command processor available?
-      LOG(INFO) << "Invoking " << DVDCLI_MOUNT_CMD << " "
-                << VOL_DRIVER_CMD_OPTION << em.deviceDriverName << " "
-                << VOL_NAME_CMD_OPTION << em.volumeName << " "
+  if (system(NULL)) { // Is a command processor available?
+    LOG(INFO) << "Invoking " << DVDCLI_MOUNT_CMD << " "
+              << VOL_DRIVER_CMD_OPTION << em.deviceDriverName << " "
+              << VOL_NAME_CMD_OPTION << em.volumeName << " "
               << opts;
-      std::ostringstream cmdOut;
-      Try<int> retcode = os::shell(&cmdOut, "%s %s%s %s%s %s",
-              DVDCLI_MOUNT_CMD,
-              VOL_DRIVER_CMD_OPTION, em.deviceDriverName.c_str(),
-              VOL_NAME_CMD_OPTION, em.volumeName.c_str(),
-              opts.c_str());
+    std::ostringstream cmdOut;
+    Try<int> retcode = os::shell(&cmdOut, "%s %s%s %s%s %s",
+      DVDCLI_MOUNT_CMD,
+      VOL_DRIVER_CMD_OPTION,
+      em.deviceDriverName.c_str(),
+      VOL_NAME_CMD_OPTION,
+      em.volumeName.c_str(),
+      opts.c_str());
 
-      if (retcode.isError()) {
-        LOG(ERROR) << DVDCLI_MOUNT_CMD << " failed to execute on "
-                   << callerLabelForLogging
-                   << retcode.error();
-      } else {
-        if (retcode.get() == ECHILD) {
-           LOG(ERROR) << "Pclose could not obtain cmd execute status";
-        } else if (retcode.get() != 0) {
-          LOG(ERROR) << DVDCLI_MOUNT_CMD << " returned errorcode "
-                     << retcode.get();
-        } else if (strings::trim(cmdOut.str()).empty()) {
-          LOG(ERROR) << DVDCLI_MOUNT_CMD
-                     << " returned an empty mountpoint name";
-        } else {
-          mountpoint = strings::trim(cmdOut.str());
-          LOG(INFO) << DVDCLI_MOUNT_CMD << " returned mountpoint:"
-                    << mountpoint;
-        }
-      }
+    if (retcode.isError()) {
+      LOG(ERROR) << DVDCLI_MOUNT_CMD << " failed to execute on "
+                 << callerLabelForLogging
+                 << retcode.error();
     } else {
-      LOG(ERROR) << "Failed to acquire a command processor for unmount on "
-                 << callerLabelForLogging;
+      if (retcode.get() == ECHILD) {
+        LOG(ERROR) << "Pclose could not obtain cmd execute status";
+      } else if (retcode.get() != 0) {
+        LOG(ERROR) << DVDCLI_MOUNT_CMD << " returned errorcode "
+                   << retcode.get();
+      } else if (strings::trim(cmdOut.str()).empty()) {
+        LOG(ERROR) << DVDCLI_MOUNT_CMD
+                   << " returned an empty mountpoint name";
+      } else {
+        mountpoint = strings::trim(cmdOut.str());
+        LOG(INFO) << DVDCLI_MOUNT_CMD << " returned mountpoint:"
+                  << mountpoint;
+      }
     }
-    return mountpoint;
+  } else {
+    LOG(ERROR) << "Failed to acquire a command processor for unmount on "
+               << callerLabelForLogging;
+  }
+  return mountpoint;
 }
 
-std::ostream& DockerVolumeDriverIsolatorProcess::dumpInfos(
-    std::ostream& out) const
+std::string& DockerVolumeDriverIsolatorProcess::dumpInfos(
+    std::string& out) const
 {
-  out << "{\"mounts\": [\n";
+  out += "{\"mounts\": [\n";
   std::string delimiter = "";
 
   for (const auto &ent : infos) {
-    out << delimiter << "{\n";
-    out << "\"containerid\": \""  << ent.first << "\",\n";
-    out << "\"volumedriver\": \""
-        << ent.second.get()->deviceDriverName << "\",\n";
-    out << "\"volumename\": \""   << ent.second.get()->volumeName << "\",\n";
-    out << "\"mountoptions\": \"" << ent.second.get()->mountOptions << "\",\n";
-    out << "\"mountpoint\": \""   << ent.second.get()->mountpoint << "\"\n";
-    out << "}";
+    out += delimiter;
+    out += "{\n";
+    out += "\"containerid\": \"";
+    out += ent.first.value();
+    out += "\",\n";
+    out += "\"volumedriver\": \"";
+    out += ent.second.get()->deviceDriverName;
+    out += "\",\n";
+    out +=  "\"volumename\": \"";
+    out += ent.second.get()->volumeName;
+    out += "\",\n";
+    out += "\"mountoptions\": \"";
+    out +=  ent.second.get()->mountOptions;
+    out +=  "\",\n";
+    out += "\"mountpoint\": \"";
+    out += ent.second.get()->mountpoint;
+    out += "\"\n";
+    out +=  "}";
     delimiter = ",\n";
   }
-
-  out << "\n]}\n";
+  out += "\n]}\n";
   return out;
 }
 
@@ -468,11 +622,11 @@ bool DockerVolumeDriverIsolatorProcess::containsProhibitedChars(
 // mount, we want to exit with an error and no new
 // mounted volumes. Goal: make all mounts or none.
 Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
-    const ContainerID& containerId,
-    const ExecutorInfo& executorInfo,
-    const string& directory,
-    const Option<string>& rootfs,
-    const Option<string>& user)
+  const ContainerID& containerId,
+  const ExecutorInfo& executorInfo,
+  const string& directory,
+  const Option<string>& rootfs,
+  const Option<string>& user)
 {
   LOG(INFO) << "Preparing external storage for container: "
             << stringify(containerId);
@@ -700,13 +854,10 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
     infos.put(containerId, iter);
   }
 
-  // Flush infos to disk - this currently only flushes to OS,
-  // with possible caching there, might have to investigate boost
-  // file_descriptor_sink to make physical flush call.
-  std::ofstream infosout(mountJsonFilename);
-  dumpInfos(infosout);
-  infosout.flush();
-  infosout.close();
+  //checkpoint the dvdi mounts for persistence
+  std::string myinfosout;
+  dumpInfos(myinfosout);
+  dvdicheckpoint::checkpoint(mountJsonFilename, myinfosout);
 
   return None();
 }
@@ -788,14 +939,12 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::cleanup(
   // Remove all this container's mounts from infos.
   infos.remove(containerId);
 
-  // Flush infos to disk, since we just changed it.
-  std::ofstream infosout(mountJsonFilename);
-  dumpInfos(infosout);
-  infosout.flush();
-  infosout.close();
+  //checkpoint the dvdi mounts for persistence
+  std::string myinfosout;
+  dumpInfos(myinfosout);
+  dvdicheckpoint::checkpoint(mountJsonFilename, myinfosout);
 
   return Nothing();
-
 }
 
 static Isolator* createDockerVolumeDriverIsolator(const Parameters& parameters)
@@ -819,4 +968,4 @@ mesos::modules::Module<Isolator> com_emccode_mesos_DockerVolumeDriverIsolator(
     "emccode@emc.com",
     "Docker Volume Driver Isolator module.",
     NULL,
-  createDockerVolumeDriverIsolator);
+    createDockerVolumeDriverIsolator);
