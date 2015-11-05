@@ -62,6 +62,14 @@ using mesos::slave::Isolator;
 using mesos::slave::IsolatorProcess;
 using mesos::slave::Limitation;
 
+//TODO temporary code until checkpoints are public by mesosphere dev
+#include <stout/path.hpp>
+#include <slave/paths.hpp>
+#include <slave/state.hpp>
+using namespace mesos::internal::slave::paths;
+using namespace mesos::internal::slave::state;
+//TODO temporary until checkpoints are public by mesosphere dev
+
 const char DockerVolumeDriverIsolatorProcess::prohibitedchars[NUM_PROHIBITED]  = {
 '%', '/', ':', ';', '\0',
 '<', '>', '|', '`', '$', '\'',
@@ -70,143 +78,6 @@ const char DockerVolumeDriverIsolatorProcess::prohibitedchars[NUM_PROHIBITED]  =
 
 std::string DockerVolumeDriverIsolatorProcess::mountJsonFilename;
 std::string DockerVolumeDriverIsolatorProcess::mesosWorkingDir;
-
-
-//TODO temporary code until checkpoints are public by mesosphere dev
-#include <stout/path.hpp>
-#include <slave/paths.hpp>
-#include <slave/state.hpp>
-using namespace mesos::internal::slave::paths;
-using namespace mesos::internal::slave::state;
-
-namespace dvdicheckpoint
-{
-
-  inline Try<Nothing> checkpoint(
-    const std::string& path,
-    const std::string& message)
-  {
-    return ::os::write(path, message);
-  }
-
-  template <typename T>
-  Try<Nothing> checkpoint(const std::string& path, const T& t)
-  {
-    // Create the base directory.
-    std::string base = Path(path).dirname();
-
-    Try<Nothing> mkdir = os::mkdir(base);
-    if (mkdir.isError()) {
-      return Error("Failed to create directory '" + base + "': " + mkdir.error());
-    }
-
-    // NOTE: We create the temporary file at 'base/XXXXXX' to make sure
-    // rename below does not cross devices (MESOS-2319).
-    //
-    // TODO(jieyu): It's possible that the temporary file becomes
-    // dangling if slave crashes or restarts while checkpointing.
-    // Consider adding a way to garbage collect them.
-    Try<std::string> temp = os::mktemp(path::join(base, "XXXXXX"));
-    if (temp.isError()) {
-      return Error("Failed to create temporary file: " + temp.error());
-    }
-
-    // Now checkpoint the instance of T to the temporary file.
-    Try<Nothing> checkpoint = checkpoint(temp.get(), t);
-    if (checkpoint.isError()) {
-      // Try removing the temporary file on error.
-      os::rm(temp.get());
-
-      return Error("Failed to write temporary file '" + temp.get() +
-      "': " + checkpoint.error());
-    }
-
-    // Rename the temporary file to the path.
-    Try<Nothing> rename = os::rename(temp.get(), path);
-    if (rename.isError()) {
-      // Try removing the temporary file on error.
-      os::rm(temp.get());
-
-      return Error("Failed to rename '" + temp.get() + "' to '" +
-      path + "': " + rename.error());
-    }
-
-    return Nothing();
-  }
-
-  Result<State> recover(const string& rootDir, bool strict)
-  {
-    LOG(INFO) << "Recovering state from '" << rootDir << "'";
-
-    // We consider the absence of 'rootDir' to mean that this is either
-    // the first time this slave was started with checkpointing enabled
-    // or this slave was started after an upgrade (--recover=cleanup).
-    if (!os::exists(rootDir)) {
-      return None();
-    }
-
-    // Now, start to recover state from 'rootDir'.
-    State state;
-
-    // Recover resources regardless whether the host has rebooted.
-    Try<ResourcesState> resources = ResourcesState::recover(rootDir, strict);
-    if (resources.isError()) {
-      return Error(resources.error());
-    }
-
-    // TODO(jieyu): Do not set 'state.resources' if we cannot find the
-    // resources checkpoint file.
-    state.resources = resources.get();
-
-    // Did the machine reboot? No need to recover slave state if the
-    // machine has rebooted.
-    if (os::exists(getBootIdPath(rootDir))) {
-      Try<string> read = os::read(getBootIdPath(rootDir));
-      if (read.isSome()) {
-        Try<string> id = os::bootId();
-        CHECK_SOME(id);
-
-        if (id.get() != strings::trim(read.get())) {
-          LOG(INFO) << "Slave host rebooted";
-          return state;
-        }
-      }
-    }
-
-    const std::string& latest = getLatestSlavePath(rootDir);
-
-    // Check if the "latest" symlink to a slave directory exists.
-    if (!os::exists(latest)) {
-      // The slave was asked to shutdown or died before it registered
-      // and had a chance to create the "latest" symlink.
-      LOG(INFO) << "Failed to find the latest slave from '" << rootDir << "'";
-      return state;
-    }
-
-    // Get the latest slave id.
-    Result<string> directory = os::realpath(latest);
-    if (!directory.isSome()) {
-      return Error("Failed to find latest slave: " +
-      (directory.isError()
-      ? directory.error()
-      : "No such file or directory"));
-    }
-
-    SlaveID slaveId;
-    slaveId.set_value(Path(directory.get()).basename());
-
-    Try<SlaveState> slave = SlaveState::recover(rootDir, slaveId, strict);
-    if (slave.isError()) {
-      return Error(slave.error());
-    }
-
-    state.slave = slave.get();
-
-    return state;
-  }
-
-}
-//TODO temporary until checkpoints are public by mesosphere dev
 
 
 DockerVolumeDriverIsolatorProcess::DockerVolumeDriverIsolatorProcess(
@@ -287,11 +158,11 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
   multihashmap<std::string, process::Owned<ExternalMount>> myOriginalContainerMounts;
 
   // Recover the state.
-  //TODO: need public version of recover
+  //TODO: need public version of recover in checkpointing
   LOG(INFO) << "dvdicheckpoint::recover() called";
-  Result<State> recover = dvdicheckpoint::recover(mesosWorkingDir, true);
+  Result<State> resultState = mesos::internal::slave::state::recover(mesosWorkingDir, true);
 
-  State state = recover.get();
+  State state = resultState.get();
   LOG(INFO) << "dvdicheckpoint::recover() returned: " << state.errors;
 
   if (state.errors != 0) {
@@ -422,7 +293,7 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
   //checkpoint the dvdi mounts for persistence
   std::string myinfosout;
   dumpInfos(myinfosout);
-  dvdicheckpoint::checkpoint(mountJsonFilename, myinfosout);
+  mesos::internal::slave::state::checkpoint(mountJsonFilename, myinfosout);
 
   // we will now reduce legacyMounts to only the mounts that should be removed
   // we will do this by deleting the mounts still in use
@@ -553,7 +424,7 @@ std::string& DockerVolumeDriverIsolatorProcess::dumpInfos(std::string& out) cons
     out += "\"mountoptions\": \"";
     out +=  ent.second.get()->mountOptions;
     out +=  "\",\n";
-    out += "\"mountpoint\": \"";
+    out += "\"mountpo52.32.91.2752.32.91.27int\": \"";
     out += ent.second.get()->mountpoint;
     out += "\"\n";
     out +=  "}";
@@ -773,7 +644,7 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolatorProcess::prepare(
   //checkpoint the dvdi mounts for persistence
   std::string myinfosout;
   dumpInfos(myinfosout);
-  dvdicheckpoint::checkpoint(mountJsonFilename, myinfosout);
+  mesos::internal::slave::state::checkpoint(mountJsonFilename, myinfosout);
 
   return None();
 }
@@ -850,7 +721,7 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::cleanup(
   //checkpoint the dvdi mounts for persistence
   std::string myinfosout;
   dumpInfos(myinfosout);
-  dvdicheckpoint::checkpoint(mountJsonFilename, myinfosout);
+  mesos::internal::slave::state::checkpoint(mountJsonFilename, myinfosout);
 
   return Nothing();
 }
