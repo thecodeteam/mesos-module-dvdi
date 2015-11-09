@@ -37,7 +37,7 @@
 namespace mesos {
 namespace slave {
 
-class DockerVolumeDriverIsolatorProcess: public mesos::slave::IsolatorProcess {
+class DockerVolumeDriverIsolatorProcess: public mesos::slave::Isolator {
 public:
   static Try<mesos::slave::Isolator*> create(const Parameters& parameters);
 
@@ -51,7 +51,7 @@ public:
   // of container states which will assist in recovery,
   // when this is available, code should use it.
   virtual process::Future<Nothing> recover(
-    const std::list<mesos::slave::ExecutorRunState>& states,
+    const std::list<ContainerState>& states,
     const hashset<ContainerID>& orphans);
 
   // Prepare runs BEFORE a task is started
@@ -72,11 +72,10 @@ public:
   //    this call is synchronous, and returns 0 if success
   //    actual call is defined below in DVDCLI_MOUNT_CMD
   // 5. Add entry to hashmap that contains root mountpath indexed by ContainerId
-  virtual process::Future<Option<CommandInfo>> prepare(
+  virtual process::Future<Option<ContainerPrepareInfo>> prepare(
     const ContainerID& containerId,
     const ExecutorInfo& executorInfo,
     const std::string& directory,
-    const Option<std::string>& rootfs,
     const Option<std::string>& user);
 
   // Nothing will be done at task start
@@ -85,7 +84,7 @@ public:
       pid_t pid);
 
   // no-op, mount occurs at prepare
-  virtual process::Future<mesos::slave::Limitation> watch(
+  virtual process::Future<ContainerLimitation> watch(
     const ContainerID& containerId);
 
   // no-op, nothing enforced
