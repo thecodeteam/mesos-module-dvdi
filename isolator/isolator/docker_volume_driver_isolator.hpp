@@ -46,10 +46,7 @@ public:
   // Slave recovery is a feature of Mesos that allows task/executors
   // to keep running if a slave process goes down, AND
   // allows the slave process to reconnect with already running
-  // slaves when it restarts
-  // TODO This interface will change post 0.23.0 to pass a list of
-  // of container states which will assist in recovery,
-  // when this is available, code should use it.
+  // slaves when it restartss
   virtual process::Future<Nothing> recover(
     const std::list<ContainerState>& states,
     const hashset<ContainerID>& orphans);
