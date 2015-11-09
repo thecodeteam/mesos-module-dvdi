@@ -54,10 +54,8 @@ using std::array;
 using namespace mesos;
 using namespace mesos::slave;
 
-//using mesos::slave::ExecutorRunState;
 using mesos::slave::Isolator;
 using mesos::slave::IsolatorProcess;
-//using mesos::slave::Limitation;
 
 //TODO temporary code until checkpoints are public by mesosphere dev
 #include <stout/path.hpp>
