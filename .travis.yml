@@ -1,13 +1,12 @@
 language: c++
 
 script:
-  - make svn 
+  - make svn
   - make boost
   - make boto
   - make glog
   - make protobuf
   - make picojson
-  - make mesos-0.24.0
   - make mesos-0.24.1
   - make autoconf
   - make isolator-0.24.1
