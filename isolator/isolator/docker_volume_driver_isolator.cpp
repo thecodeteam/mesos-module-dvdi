@@ -55,7 +55,6 @@ using namespace mesos;
 using namespace mesos::slave;
 
 using mesos::slave::Isolator;
-using mesos::slave::IsolatorProcess;
 
 //TODO temporary code until checkpoints are public by mesosphere dev
 #include <stout/path.hpp>
@@ -64,7 +63,6 @@ using mesos::slave::IsolatorProcess;
 using namespace mesos::internal::slave::paths;
 using namespace mesos::internal::slave::state;
 //TODO temporary code until checkpoints are public by mesosphere dev
-
 
 const char DockerVolumeDriverIsolatorProcess::prohibitedchars[NUM_PROHIBITED]  =
 {
@@ -76,7 +74,6 @@ const char DockerVolumeDriverIsolatorProcess::prohibitedchars[NUM_PROHIBITED]  =
 
 std::string DockerVolumeDriverIsolatorProcess::mountJsonFilename;
 std::string DockerVolumeDriverIsolatorProcess::mesosWorkingDir;
-
 
 
 DockerVolumeDriverIsolatorProcess::DockerVolumeDriverIsolatorProcess(
