@@ -10,6 +10,7 @@ script:
   - make mesos-0.23.0 
   - make mesos-0.23.1 
   - make mesos-0.24.0
+  - make mesos-0.24.1
   - make autoconf
   - make isolator-0.23.0 
   - make isolator-0.23.1
