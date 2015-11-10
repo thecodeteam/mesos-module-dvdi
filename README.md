@@ -107,7 +107,7 @@ The installation of the isolator is simple.  It is a matter of placing the `.so`
     --executor_registration_timeout=5mins \
     --ip=172.31.2.11 --work_dir=/tmp/mesos \
     --modules=file:///usr/lib/dvdi-mod.json \
-    --isolation="com_emc_mesos_DockerVolumeDriverIsolator" &
+    --isolation="com_emccode_mesos_DockerVolumeDriverIsolator" &
     ```
 
 
