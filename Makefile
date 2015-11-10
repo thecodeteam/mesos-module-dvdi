@@ -1,11 +1,11 @@
-# MESOS_VERSIONS is a list of space, separated versions of mesos that 
+# MESOS_VERSIONS is a list of space, separated versions of mesos that
 # will be built.
-MESOS_VERSIONS := 0.23.0 0.23.1 0.24.0 0.24.1
+MESOS_VERSIONS := 0.23.1 0.24.1
 
 # ISO_VERSIONS is either equal to or a subset of the MESOS_VERSIONS
-# list. The versions in this list are the versions of Mesos against 
+# list. The versions in this list are the versions of Mesos against
 # which to build the isolator module.
-ISO_VERSIONS := 0.23.0 0.23.1
+ISO_VERSIONS := 0.24.1
 
 ########################################################################
 ##                             MAKEFLAGS                              ##
@@ -129,7 +129,7 @@ export CC=gcc-4.8
 MESOS := $(addprefix mesos-,$(MESOS_VERSIONS))
 ISOLATOR := $(addprefix isolator-,$(ISO_VERSIONS))
 
-all: install 
+all: install
 install: $(SVN) $(BOOST) $(BOTO) $(GLOG) $(PROTOBUF) $(PICOJSON)
 install: $(MESOS)
 install: $(AUTOCONF)
@@ -771,7 +771,7 @@ ISO_MAKEFILE_$1 := $$(ISO_BUILD_DIR_$1)/Makefile
 ISO_LIBDIR_$1 := $$(ISO_BUILD_DIR_$1)/.libs
 ISO_SRC_LIB_$1 := $$(ISO_LIBDIR_$1)/libmesos_dvdi_isolator-$$(ISO_VER_$1).so
 
-isolator-$1-src: $$(ISO_BOOTSTRAP_$1) 
+isolator-$1-src: $$(ISO_BOOTSTRAP_$1)
 $$(ISO_BOOTSTRAP_$1): $$(ISO_BOOTSTRAP) $$(ISO_SRCS)
 	mkdir -p $$(@D) && \
 	for F in "$$$$(git ls-tree --name-only HEAD isolator/)"; do \
@@ -792,7 +792,7 @@ $$(ISO_MAKEFILE_$1): CXXFLAGS=-I$$(GLOG_OPT_DIR)/include \
 													-I$$(BOOST_OPT_DIR) \
 													-I$$(PBUF_OPT_DIR)/include \
 													-DMESOS_VERSION_INT=$$(subst .,,$1)
-$$(ISO_MAKEFILE_$1): $$(ISO_CONFIGURE_$1) $$(ISO_DEPS_$1) 
+$$(ISO_MAKEFILE_$1): $$(ISO_CONFIGURE_$1) $$(ISO_DEPS_$1)
 	mkdir -p $$(@D) && cd $$(@D) && \
 		env CXXFLAGS="$$(CXXFLAGS)" \
 				CPPFLAGS="$$(CXXFLAGS)" \
