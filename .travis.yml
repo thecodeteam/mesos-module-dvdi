@@ -8,8 +8,10 @@ script:
   - make protobuf
   - make picojson
   - make mesos-0.24.1
+  - make mesos-0.25.0
   - make autoconf
   - make isolator-0.24.1
+  - make isolator-0.25.0
   - make bintray
 
 addons:
