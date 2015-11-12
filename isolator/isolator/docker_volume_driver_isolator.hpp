@@ -23,8 +23,7 @@
 #include <boost/functional/hash.hpp>
 #include <boost/algorithm/string.hpp>
 #include <mesos/mesos.hpp>
-#include <mesos/slave/isolator.hpp>
-#include <slave/flags.hpp>
+
 #include <process/future.hpp>
 #include <process/owned.hpp>
 #include <process/process.hpp>
@@ -33,15 +32,17 @@
 #include <stout/protobuf.hpp>
 #include <stout/try.hpp>
 
+#include <slave/flags.hpp>
+#include <slave/containerizer/isolator.hpp>
 
 namespace mesos {
 namespace slave {
 
-class DockerVolumeDriverIsolatorProcess: public mesos::slave::Isolator {
+class DockerVolumeDriverIsolator: public mesos::slave::Isolator {
 public:
   static Try<mesos::slave::Isolator*> create(const Parameters& parameters);
 
-  virtual ~DockerVolumeDriverIsolatorProcess();
+  virtual ~DockerVolumeDriverIsolator();
 
   // Slave recovery is a feature of Mesos that allows task/executors
   // to keep running if a slave process goes down, AND
@@ -103,7 +104,7 @@ public:
     const ContainerID& containerId);
 
 private:
-  DockerVolumeDriverIsolatorProcess(const Parameters& parameters);
+  DockerVolumeDriverIsolator(const Parameters& parameters);
 
   const Parameters parameters;
 

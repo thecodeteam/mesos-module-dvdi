@@ -55,7 +55,6 @@ using namespace mesos;
 using namespace mesos::slave;
 
 using mesos::slave::Isolator;
-using mesos::slave::IsolatorProcess;
 
 //TODO temporary code until checkpoints are public by mesosphere dev
 #include <stout/path.hpp>
@@ -66,7 +65,7 @@ using namespace mesos::internal::slave::state;
 //TODO temporary code until checkpoints are public by mesosphere dev
 
 
-const char DockerVolumeDriverIsolatorProcess::prohibitedchars[NUM_PROHIBITED]  =
+const char DockerVolumeDriverIsolator::prohibitedchars[NUM_PROHIBITED]  =
 {
   '%', '/', ':', ';', '\0',
   '<', '>', '|', '`', '$', '\'',
@@ -74,16 +73,16 @@ const char DockerVolumeDriverIsolatorProcess::prohibitedchars[NUM_PROHIBITED]  =
   '}', '[', ']', '\n', '\t', '\v', '\b', '\r', '\\'
 };
 
-std::string DockerVolumeDriverIsolatorProcess::mountJsonFilename;
-std::string DockerVolumeDriverIsolatorProcess::mesosWorkingDir;
+std::string DockerVolumeDriverIsolator::mountJsonFilename;
+std::string DockerVolumeDriverIsolator::mesosWorkingDir;
 
 
 
-DockerVolumeDriverIsolatorProcess::DockerVolumeDriverIsolatorProcess(
+DockerVolumeDriverIsolator::DockerVolumeDriverIsolator(
   const Parameters& _parameters)
   : parameters(_parameters) {}
 
-Try<Isolator*> DockerVolumeDriverIsolatorProcess::create(
+Try<Isolator*> DockerVolumeDriverIsolator::create(
     const Parameters& parameters)
 {
   Result<string> user = os::user();
@@ -122,16 +121,16 @@ Try<Isolator*> DockerVolumeDriverIsolatorProcess::create(
   mountJsonFilename = path::join(getMetaRootDir(mesosWorkingDir), DVDI_MOUNTLIST_FILENAME);
   LOG(INFO) << "using " << mountJsonFilename;
 
-  return new DockerVolumeDriverIsolatorProcess(parameters);
+  return new DockerVolumeDriverIsolator(parameters);
 }
 
-DockerVolumeDriverIsolatorProcess::~DockerVolumeDriverIsolatorProcess() {}
+DockerVolumeDriverIsolator::~DockerVolumeDriverIsolator() {}
 
-Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
+Future<Nothing> DockerVolumeDriverIsolator::recover(
     const list<ContainerState>& states,
     const hashset<ContainerID>& orphans)
 {
-  LOG(INFO) << "DockerVolumeDriverIsolatorProcess recover() was called";
+  LOG(INFO) << "DockerVolumeDriverIsolator recover() was called";
 
   // Slave recovery is a feature of Mesos that allows task/executors
   // to keep running if a slave process goes down, AND
@@ -333,7 +332,7 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::recover(
 // Attempts to unmount specified external mount, returns true on success.
 // Also returns true so long as DVDCLI is successfully invoked,
 // even if a non-zero return code occurs.
-bool DockerVolumeDriverIsolatorProcess::unmount(
+bool DockerVolumeDriverIsolator::unmount(
     const ExternalMount& em,
     const std::string&   callerLabelForLogging ) const
 {
@@ -371,7 +370,7 @@ bool DockerVolumeDriverIsolatorProcess::unmount(
 }
 
 // Attempts to mount specified external mount, returns true on success.
-std::string DockerVolumeDriverIsolatorProcess::mount(
+std::string DockerVolumeDriverIsolator::mount(
     const ExternalMount& em,
     const std::string&   callerLabelForLogging) const
 {
@@ -425,7 +424,7 @@ std::string DockerVolumeDriverIsolatorProcess::mount(
   return mountpoint;
 }
 
-std::string& DockerVolumeDriverIsolatorProcess::dumpInfos(
+std::string& DockerVolumeDriverIsolator::dumpInfos(
     std::string& out) const
 {
   out += "{\"mounts\": [\n";
@@ -456,7 +455,7 @@ std::string& DockerVolumeDriverIsolatorProcess::dumpInfos(
   return out;
 }
 
-bool DockerVolumeDriverIsolatorProcess::containsProhibitedChars(
+bool DockerVolumeDriverIsolator::containsProhibitedChars(
     const std::string& s) const
 {
   return (string::npos != s.find_first_of(prohibitedchars, 0, NUM_PROHIBITED));
@@ -469,7 +468,7 @@ bool DockerVolumeDriverIsolatorProcess::containsProhibitedChars(
 // there are any problems parsing or mounting even one
 // mount, we want to exit with an error and no new
 // mounted volumes. Goal: make all mounts or none.
-Future<Option<ContainerPrepareInfo>> DockerVolumeDriverIsolatorProcess::prepare(
+Future<Option<ContainerPrepareInfo>> DockerVolumeDriverIsolator::prepare(
   const ContainerID& containerId,
   const ExecutorInfo& executorInfo,
   const string& directory,
@@ -709,7 +708,7 @@ Future<Option<ContainerPrepareInfo>> DockerVolumeDriverIsolatorProcess::prepare(
   return None();
 }
 
-Future<ContainerLimitation> DockerVolumeDriverIsolatorProcess::watch(
+Future<ContainerLimitation> DockerVolumeDriverIsolator::watch(
     const ContainerID& containerId)
 {
   // No-op, for now.
@@ -717,7 +716,7 @@ Future<ContainerLimitation> DockerVolumeDriverIsolatorProcess::watch(
   return Future<ContainerLimitation>();
 }
 
-Future<Nothing> DockerVolumeDriverIsolatorProcess::update(
+Future<Nothing> DockerVolumeDriverIsolator::update(
     const ContainerID& containerId,
     const Resources& resources)
 {
@@ -727,7 +726,7 @@ Future<Nothing> DockerVolumeDriverIsolatorProcess::update(
 }
 
 
-Future<ResourceStatistics> DockerVolumeDriverIsolatorProcess::usage(
+Future<ResourceStatistics> DockerVolumeDriverIsolator::usage(
     const ContainerID& containerId)
 {
   // No-op, no usage gathered.
@@ -735,7 +734,7 @@ Future<ResourceStatistics> DockerVolumeDriverIsolatorProcess::usage(
   return ResourceStatistics();
 }
 
-process::Future<Nothing> DockerVolumeDriverIsolatorProcess::isolate(
+process::Future<Nothing> DockerVolumeDriverIsolator::isolate(
     const ContainerID& containerId,
     pid_t pid)
 {
@@ -743,7 +742,7 @@ process::Future<Nothing> DockerVolumeDriverIsolatorProcess::isolate(
   return Nothing();
 }
 
-Future<Nothing> DockerVolumeDriverIsolatorProcess::cleanup(
+Future<Nothing> DockerVolumeDriverIsolator::cleanup(
     const ContainerID& containerId)
 {
   //    1. Get driver name and volume list from infos.
@@ -798,7 +797,7 @@ static Isolator* createDockerVolumeDriverIsolator(const Parameters& parameters)
 {
   LOG(INFO) << "Loading Docker Volume Driver Isolator module";
 
-  Try<Isolator*> result = DockerVolumeDriverIsolatorProcess::create(parameters);
+  Try<Isolator*> result = DockerVolumeDriverIsolator::create(parameters);
 
   if (result.isError()) {
     return NULL;
