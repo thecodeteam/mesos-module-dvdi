@@ -15,12 +15,12 @@
 # limitations under the License.
 
 Name:           dvdi-modules
-Version:        0.23.0
+Version:        0.25.0
 Release:        0%{?dist}
 License:        Apache License, Version 2.0
 Summary:        docker volume driver isolator module
 Url:            https://github.com/cantbewong/docker-volume-driver-isolator
-Source0:        dvdi-modules-0.23.0tar.gz
+Source0:        dvdi-modules-0.25.0tar.gz
 
 # This package is functional only on i386 and x86_64 architectures.
 ExclusiveArch:	%ix86 x86_64
@@ -48,5 +48,6 @@ make install DESTDIR=%{buildroot} %{?_smp_mflags}
 %{_libdir}/mesos
 
 %changelog
+* Wed Nov 11 2015 Steve Wong <steven.wong@emc.com> - 0.2.0
 * Sat Sep 19 2015 Steve Wong <steven.wong@emc.com> - 0.1
 - Preparing for initial packaging.
