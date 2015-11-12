@@ -1,11 +1,11 @@
 # MESOS_VERSIONS is a list of space, separated versions of mesos that
 # will be built.
-MESOS_VERSIONS := 0.24.1
+MESOS_VERSIONS := 0.25.0
 
 # ISO_VERSIONS is either equal to or a subset of the MESOS_VERSIONS
 # list. The versions in this list are the versions of Mesos against
 # which to build the isolator module.
-ISO_VERSIONS := 0.24.1
+ISO_VERSIONS := 0.25.0
 
 ########################################################################
 ##                             MAKEFLAGS                              ##
