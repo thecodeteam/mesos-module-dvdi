@@ -38,6 +38,29 @@
 namespace mesos {
 namespace slave {
 
+static constexpr char REXRAY_MOUNT_PREFIX[]       = "/var/lib/rexray/volumes/";
+static constexpr char DVDCLI_MOUNT_CMD[]          = "/usr/bin/dvdcli mount";
+static constexpr char DVDCLI_UNMOUNT_CMD[]        = "/usr/bin/dvdcli unmount";
+
+static constexpr char VOL_NAME_CMD_OPTION[]       = "--volumename=";
+static constexpr char VOL_DRIVER_CMD_OPTION[]     = "--volumedriver=";
+static constexpr char VOL_OPTS_CMD_OPTION[]       = "--volumeopts=";
+static constexpr char VOL_DRIVER_DEFAULT[]        = "rexray";
+
+static constexpr char VOL_NAME_ENV_VAR_NAME[]     = "DVDI_VOLUME_NAME";
+static constexpr char VOL_DRIVER_ENV_VAR_NAME[]   = "DVDI_VOLUME_DRIVER";
+static constexpr char VOL_OPTS_ENV_VAR_NAME[]     = "DVDI_VOLUME_OPTS";
+static constexpr char JSON_VOLS_ENV_VAR_NAME[]    = "DVDI_VOLS_JSON_ARRAY";
+
+//TODO this is temporary until the working_dir is exposed by mesosphere dev
+static constexpr char DVDI_MOUNTLIST_DEFAULT_DIR[]= "/tmp/mesos/";
+static constexpr char DVDI_MOUNTLIST_FILENAME[]   = "dvdimounts.json";
+static constexpr char DVDI_WORKDIR_PARAM_NAME[]   = "work_dir";
+
+//TODO this is temporary until the working_dir is exposed by mesosphere dev
+static constexpr char DEFAULT_WORKING_DIR[]       = "/tmp/mesos";
+
+
 class DockerVolumeDriverIsolator: public mesos::slave::Isolator {
 public:
   static Try<mesos::slave::Isolator*> create(const Parameters& parameters);
@@ -192,28 +215,6 @@ private:
   '<', '>', '|', '`', '$', '\'',
   '?', '^', '&', ' ', '{', '\"',
   '}', '[', ']', '\n', '\t', '\v', '\b', '\r', '\\' };*/
-
-  static constexpr const char* REXRAY_MOUNT_PREFIX       = "/var/lib/rexray/volumes/";
-  static constexpr const char* DVDCLI_MOUNT_CMD          = "/usr/bin/dvdcli mount";
-  static constexpr const char* DVDCLI_UNMOUNT_CMD        = "/usr/bin/dvdcli unmount";
-
-  static constexpr const char* VOL_NAME_CMD_OPTION       = "--volumename=";
-  static constexpr const char* VOL_DRIVER_CMD_OPTION     = "--volumedriver=";
-  static constexpr const char* VOL_OPTS_CMD_OPTION       = "--volumeopts=";
-  static constexpr const char* VOL_DRIVER_DEFAULT        = "rexray";
-
-  static constexpr const char* VOL_NAME_ENV_VAR_NAME     = "DVDI_VOLUME_NAME";
-  static constexpr const char* VOL_DRIVER_ENV_VAR_NAME   = "DVDI_VOLUME_DRIVER";
-  static constexpr const char* VOL_OPTS_ENV_VAR_NAME     = "DVDI_VOLUME_OPTS";
-  static constexpr const char* JSON_VOLS_ENV_VAR_NAME    = "DVDI_VOLS_JSON_ARRAY";
-
-  //TODO this is temporary until the working_dir is exposed by mesosphere dev
-  static constexpr const char* DVDI_MOUNTLIST_DEFAULT_DIR= "/tmp/mesos/";
-  static constexpr const char* DVDI_MOUNTLIST_FILENAME   = "dvdimounts.json";
-  static constexpr const char* DVDI_WORKDIR_PARAM_NAME   = "work_dir";
-
-  //TODO this is temporary until the working_dir is exposed by mesosphere dev
-  static constexpr const char* DEFAULT_WORKING_DIR       = "/tmp/mesos";
 
   static std::string mountJsonFilename;
   static std::string mesosWorkingDir;
