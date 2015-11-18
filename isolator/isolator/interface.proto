@@ -1,99 +1,24 @@
-package network_isolator;
+package emccode.isolator.mount;
 
-import "mesos/mesos.proto";
+option java_package = "com.emc.emcode.isolator.mount";
+option java_outer_classname = "MountList";
 
+message ExternalMount {
+  required string containerid = 1; //Unique ID for a mount
+  required string volumedriver = 2;
+  required string volumename = 3;
+  required string mountpoint = 4;
 
-message IPAMRequestIPMessage {
-  message Args {
-    required string hostname = 1;
-    required int32 num_ipv4 = 2 [default = 0];
-    required int32 num_ipv6 = 3 [default = 0];
-    required string uid = 4;
-    repeated string netgroups = 5;
-    optional mesos.Labels labels = 6;
+  message ExternalMountOption {
+    required string key = 1;
+    optional string value = 2;
   }
 
-  required string command = 1 [default = "allocate"];
-  required Args args = 2;
+  repeated ExternalMountOption option = 5;
+
 }
 
-
-message IPAMReserveIPMessage {
-  message Args {
-    required string hostname = 1;
-    repeated string ipv4_addrs = 2;
-    repeated string ipv6_addrs = 3;
-    required string uid = 4;
-    repeated string netgroups = 5;
-    optional mesos.Labels labels = 6;
-  }
-
-  required string command = 1 [default = "reserve"];
-  required Args args = 2;
-}
-
-
-message IPAMReleaseIPMessage {
-  message Args {
-    repeated string ips = 1; // OK to mix IPv4 and IPv6.
-    optional string uid = 2;
-  }
-
-  required string command = 1 [default = "release"];
-  required Args args = 2;
-}
-
-
-message IPAMResponse {
-  repeated string ipv4 = 1;
-  repeated string ipv6 = 2;
-  optional string error = 3;
-}
-
-
-message IsolatorIsolateMessage {
-  message Args {
-    required string hostname = 1;
-    required string container_id = 2;
-    required uint32 pid = 3;
-    repeated string ipv4_addrs = 4;
-    repeated string ipv6_addrs = 5;
-    repeated string netgroups = 6;
-    optional mesos.Labels labels = 7;
-  }
-
-  required string command = 1 [default = "isolate"];
-  required Args args = 2;
-}
-
-
-message IsolatorCleanupMessage {
-  message Args {
-    required string hostname = 1;
-    required string container_id = 2;
-  }
-
-  required string command = 1 [default = "cleanup"];
-  required Args args = 2;
-}
-
-
-message IsolatorMessage {
-  message Args {
-    required string hostname = 1;
-    required string container_id = 2;
-    required int32 pid = 3;
-    repeated string ipv4_addrs = 4;
-    repeated string ipv6_addrs = 5;
-    repeated string netgroups = 6;
-    optional mesos.Labels labels = 7;
-  }
-
-  required string command = 1 [default = "isolate"];
-  required Args args = 2;
-}
-
-
-message IsolatorResponse {
-  optional string error = 1;
+// Our address book file is just one of these.
+message ExternalMountList {
+  repeated ExternalMount mount = 1;
 }
