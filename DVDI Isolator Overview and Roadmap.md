@@ -62,7 +62,7 @@ In particular, it is an *isolator* module, which is a module that runs on agent 
 
 - AWS EC2 EBS
 - EMC ScaleIO
-- EMC ExtremeIO
+- EMC XtremIO
 - many others too including NFS
 
 Some of these storage types allow declarative specification of a rich set of storage attributes such as IOPs 
