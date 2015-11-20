@@ -35,6 +35,10 @@
 #include <slave/flags.hpp>
 #include <slave/containerizer/isolator.hpp>
 
+#include "interface.hpp"
+using namespace emccode::isolator::mount;
+
+
 namespace mesos {
 namespace slave {
 
@@ -54,14 +58,15 @@ static constexpr char JSON_VOLS_ENV_VAR_NAME[]    = "DVDI_VOLS_JSON_ARRAY";
 
 //TODO this is temporary until the working_dir is exposed by mesosphere dev
 static constexpr char DVDI_MOUNTLIST_DEFAULT_DIR[]= "/tmp/mesos/";
-static constexpr char DVDI_MOUNTLIST_FILENAME[]   = "dvdimounts.json";
+static constexpr char DVDI_MOUNTLIST_FILENAME[]   = "dvdimounts.pb";
 static constexpr char DVDI_WORKDIR_PARAM_NAME[]   = "work_dir";
 
 //TODO this is temporary until the working_dir is exposed by mesosphere dev
 static constexpr char DEFAULT_WORKING_DIR[]       = "/tmp/mesos";
 
 
-class DockerVolumeDriverIsolator: public mesos::slave::Isolator {
+class DockerVolumeDriverIsolator: public mesos::slave::Isolator
+{
 public:
   static Try<mesos::slave::Isolator*> create(const Parameters& parameters);
 
@@ -133,55 +138,13 @@ private:
 
   using ExternalMountID = size_t;
 
-  struct ExternalMount
-  {
-    explicit ExternalMount(
-      const std::string& _deviceDriverName,
-      const std::string& _volumeName,
-      const std::string& _mountOptions)
-        : deviceDriverName(_deviceDriverName),
-          volumeName(_volumeName),
-          mountOptions(_mountOptions),
-          mountpoint() {}
-
-    explicit ExternalMount(
-      const std::string& _deviceDriverName,
-      const std::string& _volumeName,
-      const std::string& _mountOptions,
-      const std::string& _mountpoint)
-        : deviceDriverName(_deviceDriverName),
-          volumeName(_volumeName),
-          mountOptions(_mountOptions),
-          mountpoint(_mountpoint) {}
-
-    bool operator ==(const ExternalMount& other) {
-      return getExternalMountId() == other.getExternalMountId();
-    }
-
-    ExternalMountID getExternalMountId(void) const {
-      size_t seed = 0;
-      std::string s1(boost::to_lower_copy(deviceDriverName));
-      std::string s2(boost::to_lower_copy(volumeName));
-      boost::hash_combine(seed, s1);
-      boost::hash_combine(seed, s2);
-      return seed;
-    }
-
-    // We save the full root path of any mounted device here.
-    // note device driver name and volume name are not case sensitive,
-    // but are stored as submitted in constructor
-    const std::string deviceDriverName;
-    const std::string volumeName;
-    const std::string mountOptions;
-    const std::string mountpoint;
-  };
-
-  // overload '<<' operator to allow rendering of ExternalMount
-  friend inline std::ostream& operator<<(std::ostream& os, const ExternalMount& em)
-  {
-    os << em.deviceDriverName << '/' << em.volumeName
-    << '(' << em.mountOptions << ") " << em.mountpoint;
-    return os;
+  ExternalMountID getExternalMountId(ExternalMount& em) const {
+    size_t seed = 0;
+    std::string s1(boost::to_lower_copy(em.volumedriver()));
+    std::string s2(boost::to_lower_copy(em.volumename()));
+    boost::hash_combine(seed, s1);
+    boost::hash_combine(seed, s2);
+    return seed;
   }
 
   // Attempts to unmount specified external mount, returns true on success
@@ -200,8 +163,6 @@ private:
   // This is intended as a tool to detect injection attack attempts.
   bool containsProhibitedChars(const std::string& s) const;
 
-  std::string& dumpInfos(std::string& out) const;
-
   using containermountmap =
     multihashmap<ContainerID, process::Owned<ExternalMount>>;
   containermountmap infos;
@@ -216,7 +177,7 @@ private:
   '?', '^', '&', ' ', '{', '\"',
   '}', '[', ']', '\n', '\t', '\v', '\b', '\r', '\\' };*/
 
-  static std::string mountJsonFilename;
+  static std::string mountPbFilename;
   static std::string mesosWorkingDir;
 };
 

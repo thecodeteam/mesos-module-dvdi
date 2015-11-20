@@ -4,18 +4,11 @@ option java_package = "com.emc.emcode.isolator.mount";
 option java_outer_classname = "MountList";
 
 message ExternalMount {
-  required string containerid = 1; //Unique ID for a mount
+  required string containerid = 1;
   required string volumedriver = 2;
   required string volumename = 3;
-  required string mountpoint = 4;
-
-  message ExternalMountOption {
-    required string key = 1;
-    optional string value = 2;
-  }
-
-  repeated ExternalMountOption option = 5;
-
+  optional string mountpoint = 4;
+  optional string options = 5;
 }
 
 // Our address book file is just one of these.
