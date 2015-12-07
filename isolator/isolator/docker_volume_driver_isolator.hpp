@@ -54,7 +54,6 @@ static constexpr char VOL_DRIVER_DEFAULT[]        = "rexray";
 static constexpr char VOL_NAME_ENV_VAR_NAME[]     = "DVDI_VOLUME_NAME";
 static constexpr char VOL_DRIVER_ENV_VAR_NAME[]   = "DVDI_VOLUME_DRIVER";
 static constexpr char VOL_OPTS_ENV_VAR_NAME[]     = "DVDI_VOLUME_OPTS";
-static constexpr char JSON_VOLS_ENV_VAR_NAME[]    = "DVDI_VOLS_JSON_ARRAY";
 
 //TODO this is temporary until the working_dir is exposed by mesosphere dev
 static constexpr char DVDI_MOUNTLIST_DEFAULT_DIR[]= "/tmp/mesos/";
