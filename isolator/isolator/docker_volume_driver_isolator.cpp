@@ -207,13 +207,13 @@ Future<Nothing> DockerVolumeDriverIsolator::recover(
 
     if (bSerialize) {
       if (containsProhibitedChars(mount.volumedriver())) {
-        LOG(ERROR) << "Volumedriver element in json contains an illegal "
+        LOG(ERROR) << "Volumedriver element in protobuf contains an illegal "
                    << "character, mount will be ignored";
         mount.set_volumedriver(std::string(""));
       }
 
       if (containsProhibitedChars(mount.volumename())) {
-        LOG(ERROR) << "Volumename element in json contains an illegal "
+        LOG(ERROR) << "Volumename element in protobuf contains an illegal "
                    << "character, mount will be ignored";
         mount.set_volumename(std::string(""));
       }
@@ -414,10 +414,11 @@ Future<Option<ContainerPrepareInfo>> DockerVolumeDriverIsolator::prepare(
     return None();
   }
 
-  // In the future we aspire to accepting a json mount list
+  // In the future we aspire to accepting a mount list
   // some un-used "scaffolding" is in place now for this
-  JSON::Object environment;
-  JSON::Array jsonVariables;
+  // saved the original protobuf structure
+  Environment environment;
+  environment.CopyFrom(executorInfo.command().environment());
 
   // We accept <environment-var-name>#, where # can be 1-9, saved in array[#].
   // We also accept <environment-var-name>, saved in array[0].
@@ -430,10 +431,6 @@ Future<Option<ContainerPrepareInfo>> DockerVolumeDriverIsolator::prepare(
   // looking for the ones we need.
   foreach (const auto &variable,
            executorInfo.command().environment().variables()) {
-    JSON::Object variableObject;
-    variableObject.values["name"] = variable.name();
-    variableObject.values["value"] = variable.value();
-    jsonVariables.values.push_back(variableObject);
 
     if (strings::startsWith(variable.name(), VOL_NAME_ENV_VAR_NAME)) {
 
@@ -512,12 +509,8 @@ Future<Option<ContainerPrepareInfo>> DockerVolumeDriverIsolator::prepare(
           }
         }
       }
-    } else if (variable.name() == JSON_VOLS_ENV_VAR_NAME) {
-      //JSON::Value jsonVolArray = JSON::parse(variable.value());
     }
   }
-  // TODO: json environment is not used yet
-  environment.values["variables"] = jsonVariables;
 
   // requestedExternalMounts is all mounts requested by container.
   std::vector<process::Owned<ExternalMount>> requestedExternalMounts;
