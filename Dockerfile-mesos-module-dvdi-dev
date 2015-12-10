@@ -1,12 +1,12 @@
 FROM cantbewong/mesos-build-module-dev:0.25.0
 MAINTAINER Steve Wong (EMCCODE)
 
-ENTRYPOINT cd /isolator/isolator && \
+ENTRYPOINT cd /isolator && \
+    export ISOLATOR_VERSION=0.25.0 && \
+    export LD_LIBRARY_PATH=LD_LIBRARY_PATH:/usr/local/lib && \
     ./bootstrap && \
     rm -Rf build && \
     mkdir build && \
     cd build && \
-    export ISOLATOR_VERSION=0.25.0 && \
-    export LD_LIBRARY_PATH=LD_LIBRARY_PATH:/usr/local/lib && \
     ../configure --with-mesos-root=/mesos --with-mesos-build-dir=/mesos && \
     make all

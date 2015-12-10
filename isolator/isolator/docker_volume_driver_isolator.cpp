@@ -232,10 +232,10 @@ Future<Nothing> DockerVolumeDriverIsolator::recover(
             << " and found evidence of " << originalContainerMounts.size()
             << " previous active external mounts in recover()";
 
-  // Both maps starts empty, we will iterate to populate.
+  // Both maps start empty, we will iterate to populate.
   using externalmountmap =
     hashmap<ExternalMountID, process::Owned<ExternalMount>>;
-  // legacyMounts is a list of all mounts in use at according to recovered file.
+  // legacyMounts is a list of all mounts in use according to mount list file.
   externalmountmap legacyMounts;
   // inUseMounts is a list of all mounts deduced to be still in use now.
   externalmountmap inUseMounts;
@@ -303,8 +303,9 @@ bool DockerVolumeDriverIsolator::unmount(
     const ExternalMount& em,
     const std::string&   callerLabelForLogging ) const
 {
-  LOG(INFO) << em.SerializeAsString() << " is being unmounted on " <<
-    callerLabelForLogging;
+  LOG(INFO) << em.volumedriver() << "/" << em.volumename()
+            << " is being unmounted on "
+            << callerLabelForLogging;
 
   if (system(NULL)) { // Is a command processor available?
 
@@ -337,13 +338,15 @@ bool DockerVolumeDriverIsolator::unmount(
   return true;
 }
 
-// Attempts to mount specified external mount, returns true on success.
+// Attempts to mount specified external mount,
+// returns non-empty string (mountpoint) on success.
 std::string DockerVolumeDriverIsolator::mount(
     const ExternalMount& em,
     const std::string&   callerLabelForLogging) const
 {
-  LOG(INFO) << em.SerializeAsString() << " is being mounted on " <<
-    callerLabelForLogging;
+  LOG(INFO) << em.volumedriver() << "/" << em.volumename()
+            << " is being mounted on "
+            << callerLabelForLogging;
 
   const std::string volumeDriver = em.volumedriver();
   const std::string volumeName = em.volumename();
@@ -390,6 +393,44 @@ bool DockerVolumeDriverIsolator::containsProhibitedChars(
   return (string::npos != s.find_first_of(prohibitedchars, 0, NUM_PROHIBITED));
 }
 
+bool DockerVolumeDriverIsolator::parseEnvVar(
+  const Environment_Variable&  envvar,
+  const char*                  expectedName,
+  envvararray                  (&insertTarget),
+  bool                         limitCharset) const
+{
+  const size_t prefixLength = strlen(expectedName);
+  if (!strings::startsWith(envvar.name(), expectedName) ||
+      envvar.name().length() > (prefixLength+1) ) {
+    LOG(ERROR) << "Environment variable " << envvar.name()
+               << " rejected because it's name is invalid.";
+    return false;
+  }
+  if (limitCharset && containsProhibitedChars(envvar.value())) {
+    LOG(ERROR) << "Environment variable " << envvar.name()
+               << " rejected because it's value contains "
+               << "prohibited characters";
+    return false;
+  }
+
+  size_t index = 0;
+  if (envvar.name().length() == (prefixLength+1)) {
+    char digit = envvar.name().data()[prefixLength];
+
+    if (!isdigit(digit)) {
+      LOG(ERROR) << "Environment variable " << envvar.name()
+                 << " rejected because it doesn't end with a digit.";
+      return false;
+    }
+    index = std::atoi(envvar.name().substr(prefixLength).c_str());
+  }
+
+  insertTarget[index] = envvar.value();
+  LOG(INFO) << envvar.name()  << "("
+            << envvar.value() << ") parsed from environment";
+  return true;
+}
+
 // Prepare runs BEFORE a task is started
 // will check if the volume is already mounted and if not,
 // will mount the volume.
@@ -406,6 +447,10 @@ Future<Option<ContainerPrepareInfo>> DockerVolumeDriverIsolator::prepare(
   LOG(INFO) << "Preparing external storage for container: "
             << stringify(containerId);
 
+  if (infos.contains(containerId)) {
+    return Failure("Container has already been prepared");
+  }
+
   // Get things we need from task's environment in ExecutoInfo.
   if (!executorInfo.command().has_environment()) {
     // No environment means no external volume specification.
@@ -414,18 +459,17 @@ Future<Option<ContainerPrepareInfo>> DockerVolumeDriverIsolator::prepare(
     return None();
   }
 
-  // In the future we aspire to accepting a mount list
-  // some un-used "scaffolding" is in place now for this
-  // saved the original protobuf structure
-  Environment environment;
-  environment.CopyFrom(executorInfo.command().environment());
+  ContainerPrepareInfo prepareInfo;
+  prepareInfo.set_namespaces(CLONE_NEWNS); // new filesystem namespace
 
   // We accept <environment-var-name>#, where # can be 1-9, saved in array[#].
   // We also accept <environment-var-name>, saved in array[0].
-  static constexpr size_t ARRAY_SIZE = 10;
-  std::array<std::string, ARRAY_SIZE> deviceDriverNames;
-  std::array<std::string, ARRAY_SIZE> volumeNames;
-  std::array<std::string, ARRAY_SIZE> mountOptions;
+  // parsing is "messy" because we don't insist that environment
+  // variable are in any particular order, or grouped by volume #
+  envvararray deviceDriverNames;
+  envvararray volumeNames;
+  envvararray mountOptions;
+  envvararray containerPaths;
 
   // Iterate through the environment variables,
   // looking for the ones we need.
@@ -433,95 +477,44 @@ Future<Option<ContainerPrepareInfo>> DockerVolumeDriverIsolator::prepare(
            executorInfo.command().environment().variables()) {
 
     if (strings::startsWith(variable.name(), VOL_NAME_ENV_VAR_NAME)) {
-
-      if (containsProhibitedChars(variable.value())) {
-        LOG(ERROR) << "Environment variable " << variable.name()
-                   << " rejected because it's value contains "
-                   << "prohibited characters";
+      if (!parseEnvVar(variable, VOL_NAME_ENV_VAR_NAME, volumeNames, true)) {
         return Failure("prepare() failed due to illegal environment variable");
       }
-
-      const size_t prefixLength = strlen(VOL_NAME_ENV_VAR_NAME);
-
-      if (variable.name().length() == prefixLength) {
-        volumeNames[0] = variable.value();
-      } else if (variable.name().length() == (prefixLength+1)) {
-        char digit = variable.name().data()[prefixLength];
-
-        if (isdigit(digit)) {
-          size_t index =
-              std::atoi(variable.name().substr(prefixLength).c_str());
-
-          if (index !=0) {
-            volumeNames[index] = variable.value();
-          }
-        }
-      }
-      LOG(INFO) << "External volume name (" << variable.value()
-                << ") parsed from environment";
     } else if (strings::startsWith(variable.name(), VOL_DRIVER_ENV_VAR_NAME)) {
-
-      if (containsProhibitedChars(variable.value())) {
-        LOG(ERROR) << "Environment variable " << variable.name()
-            << " rejected because it's value contains prohibited characters";
+      if (!parseEnvVar(
+          variable,
+          VOL_DRIVER_ENV_VAR_NAME,
+          deviceDriverNames,
+          true)) {
         return Failure("prepare() failed due to illegal environment variable");
-      }
-
-      const size_t prefixLength = strlen(VOL_DRIVER_ENV_VAR_NAME);
-
-      if (variable.name().length() == prefixLength) {
-        deviceDriverNames[0] = variable.value();
-      } else if (variable.name().length() == (prefixLength+1)) {
-
-        char digit = variable.name().data()[prefixLength];
-
-        if (isdigit(digit)) {
-          size_t index =
-              std::atoi(variable.name().substr(prefixLength).c_str());
-          if (index !=0) {
-            deviceDriverNames[index] = variable.value();
-          }
-        }
       }
     } else if (strings::startsWith(variable.name(), VOL_OPTS_ENV_VAR_NAME)) {
-
-      if (containsProhibitedChars(variable.value())) {
-        LOG(ERROR) << "Environment variable " << variable.name()
-            << " rejected because it's value contains prohibited characters";
+      if (!parseEnvVar(variable, VOL_OPTS_ENV_VAR_NAME, mountOptions, true)) {
         return Failure("prepare() failed due to illegal environment variable");
       }
-
-      const size_t prefixLength = strlen(VOL_OPTS_ENV_VAR_NAME);
-
-      if (variable.name().length() == prefixLength) {
-        mountOptions[0] = variable.value();
-      } else if (variable.name().length() == (prefixLength+1)) {
-
-        char digit = variable.name().data()[prefixLength];
-
-        if (isdigit(digit)) {
-
-          size_t index =
-              std::atoi(variable.name().substr(prefixLength).c_str());
-
-          if (index !=0) {
-            mountOptions[index] = variable.value();
-          }
-        }
+    } else if (strings::startsWith(variable.name(), VOL_CPATH_ENV_VAR_NAME)) {
+      if (!parseEnvVar(
+          variable,
+          VOL_CPATH_ENV_VAR_NAME,
+          containerPaths,
+          false)) {
+        return Failure("prepare() failed due to illegal environment variable");
       }
     }
   }
 
   // requestedExternalMounts is all mounts requested by container.
   std::vector<process::Owned<ExternalMount>> requestedExternalMounts;
+
   // unconnectedExternalMounts is the subset of those not already
   // in use by another container.
   std::vector<process::Owned<ExternalMount>> unconnectedExternalMounts;
+
   // prevConnectedExternalMounts is the subset of those that are
   // in use by another container.
   std::vector<process::Owned<ExternalMount>> prevConnectedExternalMounts;
 
-  // Not using iterator because we access all 3 arrays using common index.
+  // Not using iterator because we access all 4 arrays using common index.
   for (size_t i = 0; i < volumeNames.size(); i++) {
 
     if (volumeNames[i].empty()) {
@@ -534,11 +527,20 @@ Future<Option<ContainerPrepareInfo>> DockerVolumeDriverIsolator::prepare(
       deviceDriverNames[i] = VOL_DRIVER_DEFAULT;
     }
 
+    if (containerPaths[i].empty()) {
+      containerPaths[i] = mesosWorkingDir + '/' +
+          deviceDriverNames[i] +
+          "/volumes/" +
+          volumeNames[i];
+    }
+
+    // note: mountpoint is not set yet, because we haven't mounted yet
     process::Owned<ExternalMount> mount(
       Builder().setContainerId(stringify(containerId))
                .setVolumeDriver(deviceDriverNames[i])
                .setVolumeName(volumeNames[i])
                .setOptions(mountOptions[i])
+               .setContainerPath(containerPaths[i])
                .build()
       );
 
@@ -569,8 +571,13 @@ Future<Option<ContainerPrepareInfo>> DockerVolumeDriverIsolator::prepare(
       if (getExternalMountId(*(ent.second.get())) ==
             getExternalMountId(*(mount.get())) ) {
         mountInUse = true;
-        prevConnectedExternalMounts.push_back(ent.second);
-        LOG(INFO) << "Requested mount(" << (*mount).SerializeAsString()
+        // TODO must make a new External Mount here because
+        // container path can be different, can't
+        // copy ent.second
+        mount->set_mountpoint(ent.second->mountpoint());
+        prevConnectedExternalMounts.push_back(mount);
+        LOG(INFO) << "Requested mount(" << mount->volumedriver() << "/"
+                  << mount->volumename()
                   << ") is already mounted by another container";
         break;
       }
@@ -597,6 +604,7 @@ Future<Option<ContainerPrepareInfo>> DockerVolumeDriverIsolator::prepare(
                  .setVolumeDriver(iter->volumedriver())
                  .setVolumeName(iter->volumename())
                  .setOptions(iter->options())
+                 .setContainerPath(iter->container_path())
                  .setMountPoint(mountpoint)
                  .build()
         );
@@ -621,13 +629,59 @@ Future<Option<ContainerPrepareInfo>> DockerVolumeDriverIsolator::prepare(
     }
   }
 
+  // we need to attach previous and newly created mounts to
+  // container path now
+
+
   // Note: infos has a record for each mount associated with this container
   // even if the mount is also used by another container.
   for (const auto &iter : prevConnectedExternalMounts) {
+
+    LOG(INFO) << "mount " << iter->mountpoint() << " was previously connected";
+    LOG(INFO) << "queueing mount -n --rbind " << iter->mountpoint()
+              << " " << iter->container_path();
+    prepareInfo.add_commands()->set_value(
+        "mount -n --rbind " +
+        iter->mountpoint() + " " +
+        iter->container_path());
     infos.put(containerId, iter);
   }
 
   for (const auto &iter : successfulExternalMounts) {
+    std::string containerPath = iter->container_path();
+    std::string mountPoint = iter->mountpoint();
+
+    // Set the ownership and permissions to match the container path
+    // as these are inherited from host path on bind mount.
+    struct stat stat;
+    if (::stat(containerPath.c_str(), &stat) < 0) {
+      return Failure("Failed to get permissions on '" +
+                      containerPath + "'" +
+                      ": " + strerror(errno));
+    }
+
+    Try<Nothing> chmod = os::chmod(mountPoint, stat.st_mode);
+    if (chmod.isError()) {
+      return Failure("Failed to chmod hostPath '" +
+                     mountPoint +
+                     "': " +
+                     chmod.error());
+    }
+
+    Try<Nothing> chown = os::chown(stat.st_uid, stat.st_gid, mountPoint, false);
+    if (chown.isError()) {
+      return Failure("Failed to chown hostPath '" +
+                     mountPoint +
+                     "': " +
+                     chown.error());
+    }
+
+    LOG(INFO) << "queueing mount -n --rbind " << mountPoint
+    << " " << containerPath;
+    // -n means don't write to /etc/mtab
+    prepareInfo.add_commands()->set_value(
+            "mount -n --rbind " + mountPoint + " " + containerPath);
+
     infos.put(containerId, iter);
   }
 
@@ -640,7 +694,7 @@ Future<Option<ContainerPrepareInfo>> DockerVolumeDriverIsolator::prepare(
   mesos::internal::slave::state::checkpoint(mountPbFilename,
     inUseMountsProtobuf);
 
-  return None();
+  return prepareInfo;
 }
 
 Future<ContainerLimitation> DockerVolumeDriverIsolator::watch(
