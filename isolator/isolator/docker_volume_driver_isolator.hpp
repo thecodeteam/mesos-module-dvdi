@@ -33,7 +33,11 @@
 #include <stout/try.hpp>
 
 #include <slave/flags.hpp>
+#if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 0240
+#include <mesos/slave/isolator.hpp>
+#else
 #include <slave/containerizer/isolator.hpp>
+#endif
 
 #include "interface.hpp"
 using namespace emccode::isolator::mount;
@@ -64,8 +68,11 @@ static constexpr char DVDI_WORKDIR_PARAM_NAME[]   = "work_dir";
 //TODO this is temporary until the working_dir is exposed by mesosphere dev
 static constexpr char DEFAULT_WORKING_DIR[]       = "/tmp/mesos";
 
-
+#if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 0240
+class DockerVolumeDriverIsolator: public mesos::slave::IsolatorProcess
+#else
 class DockerVolumeDriverIsolator: public mesos::slave::Isolator
+#endif
 {
 public:
   static Try<mesos::slave::Isolator*> create(const Parameters& parameters);
@@ -75,10 +82,16 @@ public:
   // Slave recovery is a feature of Mesos that allows task/executors
   // to keep running if a slave process goes down, AND
   // allows the slave process to reconnect with already running
-  // slaves when it restartss
+  // slaves when it restarts
+#if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 0240
+  virtual process::Future<Nothing> recover(
+    const std::list<mesos::slave::ExecutorRunState>& states,
+    const hashset<ContainerID>& orphans);
+#else
   virtual process::Future<Nothing> recover(
     const std::list<ContainerState>& states,
     const hashset<ContainerID>& orphans);
+#endif
 
   // Prepare runs BEFORE a task is started
   // will check if the volume is already mounted and if not,
@@ -98,11 +111,20 @@ public:
   //    this call is synchronous, and returns 0 if success
   //    actual call is defined below in DVDCLI_MOUNT_CMD
   // 5. Add entry to hashmap that contains root mountpath indexed by ContainerId
+#if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 0240
+  virtual process::Future<Option<CommandInfo>> prepare(
+    const ContainerID& containerId,
+    const ExecutorInfo& executorInfo,
+    const std::string& directory,
+    const Option<std::string>& rootfs,
+    const Option<std::string>& user);
+#else
   virtual process::Future<Option<ContainerPrepareInfo>> prepare(
     const ContainerID& containerId,
     const ExecutorInfo& executorInfo,
     const std::string& directory,
     const Option<std::string>& user);
+#endif
 
   // Nothing will be done at task start
   virtual process::Future<Nothing> isolate(
@@ -110,9 +132,13 @@ public:
       pid_t pid);
 
   // no-op, mount occurs at prepare
+#if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 0240
+  virtual process::Future<mesos::slave::Limitation> watch(
+    const ContainerID& containerId);
+#else
   virtual process::Future<ContainerLimitation> watch(
     const ContainerID& containerId);
-
+#endif
   // no-op, nothing enforced
   virtual process::Future<Nothing> update(
     const ContainerID& containerId,

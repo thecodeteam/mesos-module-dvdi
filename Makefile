@@ -1,11 +1,11 @@
 # MESOS_VERSIONS is a list of space, separated versions of mesos that
 # will be built.
-MESOS_VERSIONS := 0.25.0
+MESOS_VERSIONS := 0.23.1 0.24.1 0.25.0
 
 # ISO_VERSIONS is either equal to or a subset of the MESOS_VERSIONS
 # list. The versions in this list are the versions of Mesos against
 # which to build the isolator module.
-ISO_VERSIONS := 0.25.0
+ISO_VERSIONS := 0.23.1 0.24.1 0.25.0
 
 ########################################################################
 ##                             MAKEFLAGS                              ##
@@ -130,7 +130,7 @@ MESOS := $(addprefix mesos-,$(MESOS_VERSIONS))
 ISOLATOR := $(addprefix isolator-,$(ISO_VERSIONS))
 
 all: install
-install: $(SVN) $(BOOST) $(BOTO) $(GLOG) $(PROTOBUF) $(PICOJSON)
+install: $(SVN) $(BOOST) $(BOTO) $(GLOG) $(PROTOBUF)
 install: $(MESOS)
 install: $(AUTOCONF)
 install: $(ISOLATOR)
@@ -376,39 +376,6 @@ glog-touch:
 				$(GLOG)
 
 ########################################################################
-##                             PicoJSON                               ##
-########################################################################
-PICOJSON_VER := 1.3.0
-PICOJSON_SRC_URL := https://raw.githubusercontent.com/kazuho/picojson
-PICOJSON_OPT_7Z := picojson-$(PICOJSON_VER).7z
-PICOJSON_OPT_URL := $(DEPS_URL)/$(PICOJSON_OPT_7Z)
-PICOJSON_OPT_DIR := $(DEPS_DIR)/picojson-$(PICOJSON_VER)/opt
-PICOJSON := $(PICOJSON_OPT_DIR)/include/picojson.h
-
-picojson: $(PICOJSON)
-ifeq ($(call USE_U1204_CACHED_DEP,$(PICOJSON_OPT_7Z)),true)
-$(PICOJSON):
-	cd $(DEPS_DIR) && \
-		7z x $(DEPS_7ZS_DIR)/$(PICOJSON_OPT_7Z) > /dev/null
-else
-ifeq ($(call USE_U1204_DEP,$(PICOJSON_OPT_7Z)),true)
-$(PICOJSON):
-	mkdir -p $(DEPS_7ZS_DIR) && \
-		cd $(DEPS_7ZS_DIR) && \
-		curl -SLO $(DEPS_URL)/$(PICOJSON_OPT_7Z) && \
-		cd $(DEPS_DIR) && \
-		7z x $(DEPS_7ZS_DIR)/$(PICOJSON_OPT_7Z) > /dev/null
-else
-$(PICOJSON):
-	mkdir -p $(@D) && cd $(@D) && \
-		curl -SLO $(PICOJSON_SRC_URL)/v$(PICOJSON_VER)/picojson.h
-endif
-endif
-
-picojson-clean:
-	rm -fr $(PICOJSON_OPT_DIR)
-
-########################################################################
 ##                                Boost                               ##
 ########################################################################
 BOOST_VER := 1.59.0
@@ -562,7 +529,7 @@ protobuf-touch:
 ########################################################################
 ##                                 Mesos                              ##
 ########################################################################
-MESOS_DEPS := $(SVN) $(BOOST) $(BOTO) $(GLOG) $(PROTOBUF) $(PICOJSON)
+MESOS_DEPS := $(SVN) $(BOOST) $(BOTO) $(GLOG) $(PROTOBUF)
 
 ifeq "$(origin MESOS_MAKEFLAGS)" "undefined"
 MESOS_MAKEFLAGS := $(MAKEFLAGS)
@@ -594,7 +561,6 @@ $$(MESOS_CONFIGURE_$1):
 
 mesos-$1-configure: $$(MESOS_MAKEFILE_$1)
 $$(MESOS_MAKEFILE_$1): CXXFLAGS=-I$$(GLOG_OPT_DIR) \
-														-I$$(PICOJSON_OPT_DIR)/include \
 														-I$$(BOOST_OPT_DIR) \
 														-I$$(PBUF_OPT_DIR)/include
 $$(MESOS_MAKEFILE_$1): PYTHONPATH=$$(BOTO_OPT_DIR)
@@ -611,7 +577,6 @@ $$(MESOS_MAKEFILE_$1): $$(MESOS_CONFIGURE_$1) $$(MESOS_DEPS)
 			--with-svn=$$(SVN_OPT_DIR) \
 			--with-boost=$$(BOOST_OPT_DIR) \
 			--with-protobuf=$$(PBUF_OPT_DIR) \
-			--with-picojson=$$(PICOJSON_OPT_DIR) \
 			--with-glog=$$(GLOG_OPT_DIR)
 
 mesos-$1-make: $$(MESOS_SRC_BIN_$1)
@@ -756,7 +721,7 @@ ISOLATOR_MAKEFLAGS := $(MAKEFLAGS)
 endif
 
 ISO_SRC_DIR := $(PWD)/isolator
-ISO_DEPS := $(BOOST) $(GLOG) $(PROTOBUF) $(PICOJSON)
+ISO_DEPS := $(BOOST) $(GLOG) $(PROTOBUF)
 ISO_BOOTSTRAP := $(ISO_SRC_DIR)/bootstrap
 ISO_SRCS := $(wildcard $(ISO_SRC_DIR)/isolator/*)
 
@@ -788,7 +753,6 @@ $$(ISO_CONFIGURE_$1): $$(ISO_BOOTSTRAP_$1) $(AUTOCONF)
 
 isolator-$1-configure: $$(ISO_MAKEFILE_$1)
 $$(ISO_MAKEFILE_$1): CXXFLAGS=-I$$(GLOG_OPT_DIR)/include \
-													-I$$(PICOJSON_OPT_DIR)/include \
 													-I$$(BOOST_OPT_DIR) \
 													-I$$(PBUF_OPT_DIR)/include \
 													-DMESOS_VERSION_INT=$$(subst .,,$1)
