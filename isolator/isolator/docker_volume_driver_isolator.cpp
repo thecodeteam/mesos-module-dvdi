@@ -54,6 +54,11 @@ using std::array;
 using namespace mesos;
 using namespace mesos::slave;
 
+#if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 0240
+using mesos::slave::ExecutorRunState;
+using mesos::slave::IsolatorProcess;
+using mesos::slave::Limitation;
+#endif
 using mesos::slave::Isolator;
 
 //TODO temporary code until checkpoints are public by mesosphere dev
@@ -127,7 +132,14 @@ Try<Isolator*> DockerVolumeDriverIsolator::create(
                                  DVDI_MOUNTLIST_FILENAME);
   LOG(INFO) << "using " << mountPbFilename;
 
+#if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 0240
+  process::Owned<IsolatorProcess> process(
+      new DockerVolumeDriverIsolator(parameters));
+
+  return new Isolator(process);
+#else
   return new DockerVolumeDriverIsolator(parameters);
+#endif
 }
 
 DockerVolumeDriverIsolator::~DockerVolumeDriverIsolator()
@@ -136,9 +148,15 @@ DockerVolumeDriverIsolator::~DockerVolumeDriverIsolator()
   google::protobuf::ShutdownProtobufLibrary();
 }
 
+#if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 0240
+Future<Nothing> DockerVolumeDriverIsolator::recover(
+    const list<ExecutorRunState>& states,
+    const hashset<ContainerID>& orphans)
+#else
 Future<Nothing> DockerVolumeDriverIsolator::recover(
     const list<ContainerState>& states,
     const hashset<ContainerID>& orphans)
+#endif
 {
   LOG(INFO) << "DockerVolumeDriverIsolator recover() was called";
 
@@ -246,6 +264,29 @@ Future<Nothing> DockerVolumeDriverIsolator::recover(
     legacyMounts.put(getExternalMountId(*(elem.second.get())), elem.second);
   }
 
+#if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 0240
+  foreach (const ExecutorRunState& state, states) {
+
+    if (originalContainerMounts.contains(state.id.value())) {
+
+      // We found a task that is still running and has mounts.
+      LOG(INFO) << "Running container(" << state.id
+                << ") re-identified on recover()";
+      LOG(INFO) << "State.directory is (" << state.directory << ")";
+      std::list<process::Owned<ExternalMount>> mountsForContainer =
+          originalContainerMounts.get(state.id.value());
+
+      for (const auto &iter : mountsForContainer) {
+
+        // Copy task element to rebuild infos.
+        infos.put(state.id, iter);
+        ExternalMountID id = getExternalMountId(*iter);
+        LOG(INFO) << "Re-identified a preserved mount, id is " << id;
+        inUseMounts.put(id, iter);
+      }
+    }
+  }
+#else
   foreach (const ContainerState& state, states)
   {
     if (originalContainerMounts.contains(state.container_id().value())) {
@@ -267,6 +308,7 @@ Future<Nothing> DockerVolumeDriverIsolator::recover(
       }
     }
   }
+#endif
 
   // Create ExternalMountList protobuf message to checkpoint
   ExternalMountList inUseMountsProtobuf;
@@ -313,12 +355,22 @@ bool DockerVolumeDriverIsolator::unmount(
               << VOL_DRIVER_CMD_OPTION << em.volumedriver() << " "
               << VOL_NAME_CMD_OPTION << em.volumename();
 
+#if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 0240
+    std::ostringstream cmdOut;
+    Try<int> retcode = os::shell(&cmdOut, "%s %s%s %s%s",
+      DVDCLI_UNMOUNT_CMD,
+      VOL_DRIVER_CMD_OPTION,
+      em.volumedriver().c_str(),
+      VOL_NAME_CMD_OPTION,
+      em.volumename().c_str());
+#else
     Try<string> retcode = os::shell("%s %s%s %s%s ",
       DVDCLI_UNMOUNT_CMD,
       VOL_DRIVER_CMD_OPTION,
       em.volumedriver().c_str(),
       VOL_NAME_CMD_OPTION,
       em.volumename().c_str());
+#endif
 
     if (retcode.isError()) {
       LOG(WARNING) << DVDCLI_UNMOUNT_CMD << " failed to execute on "
@@ -327,7 +379,12 @@ bool DockerVolumeDriverIsolator::unmount(
                    << "manually unmounted previously "
                    << retcode.error();
     } else {
+#if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 0240
+      LOG(INFO) << DVDCLI_UNMOUNT_CMD << " returned " << retcode.get() << ", "
+                << cmdOut.str();
+#else
       LOG(INFO) << DVDCLI_UNMOUNT_CMD << " returned " << retcode.get();
+#endif
     }
   } else {
     LOG(ERROR) << "failed to acquire a command processor for unmount on "
@@ -358,6 +415,16 @@ std::string DockerVolumeDriverIsolator::mount(
               << VOL_NAME_CMD_OPTION << em.volumename() << " "
               << em.options();
 
+#if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 0240
+    std::ostringstream cmdOut;
+    Try<int> retcode = os::shell(&cmdOut, "%s %s%s %s%s %s",
+      DVDCLI_MOUNT_CMD,
+      VOL_DRIVER_CMD_OPTION,
+      em.volumedriver().c_str(),
+      VOL_NAME_CMD_OPTION,
+      em.volumename().c_str(),
+      em.options().c_str());
+#else
     Try<string> retcode = os::shell("%s %s%s %s%s %s",
       DVDCLI_MOUNT_CMD,
       VOL_DRIVER_CMD_OPTION,
@@ -365,12 +432,26 @@ std::string DockerVolumeDriverIsolator::mount(
       VOL_NAME_CMD_OPTION,
       em.volumename().c_str(),
       em.options().c_str());
+#endif
 
     if (retcode.isError()) {
       LOG(ERROR) << DVDCLI_MOUNT_CMD << " failed to execute on "
                  << callerLabelForLogging
                  << retcode.error();
     } else {
+#if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 0240
+      if (retcode.get() != 0) {
+        LOG(ERROR) << DVDCLI_MOUNT_CMD << " returned errorcode "
+                   << retcode.get();
+      } else if (strings::trim(cmdOut.str()).empty()) {
+        LOG(ERROR) << DVDCLI_MOUNT_CMD
+                   << " returned an empty mountpoint name";
+      } else {
+        mountpoint = strings::trim(cmdOut.str());
+        LOG(INFO) << DVDCLI_MOUNT_CMD << " returned mountpoint:"
+                  << mountpoint;
+      }
+#else
       if (strings::trim(retcode.get()).empty()) {
         LOG(ERROR) << DVDCLI_MOUNT_CMD
                    << " returned an empty mountpoint name";
@@ -379,6 +460,7 @@ std::string DockerVolumeDriverIsolator::mount(
         LOG(INFO) << DVDCLI_MOUNT_CMD << " returned mountpoint:"
                   << mountpoint;
       }
+#endif
     }
   } else {
     LOG(ERROR) << "Failed to acquire a command processor for unmount on "
@@ -438,11 +520,20 @@ bool DockerVolumeDriverIsolator::parseEnvVar(
 // there are any problems parsing or mounting even one
 // mount, we want to exit with an error and no new
 // mounted volumes. Goal: make all mounts or none.
+#if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 0240
+Future<Option<CommandInfo>> DockerVolumeDriverIsolator::prepare(
+  const ContainerID& containerId,
+  const ExecutorInfo& executorInfo,
+  const string& directory,
+  const Option<string>& rootfs,
+  const Option<string>& user)
+#else
 Future<Option<ContainerPrepareInfo>> DockerVolumeDriverIsolator::prepare(
   const ContainerID& containerId,
   const ExecutorInfo& executorInfo,
   const string& directory,
   const Option<string>& user)
+#endif
 {
   LOG(INFO) << "Preparing external storage for container: "
             << stringify(containerId);
@@ -459,8 +550,14 @@ Future<Option<ContainerPrepareInfo>> DockerVolumeDriverIsolator::prepare(
     return None();
   }
 
+#if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 0240
+  list<string> commands;
+#elif MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 0250
   ContainerPrepareInfo prepareInfo;
-  prepareInfo.set_namespaces(CLONE_NEWNS); // new filesystem namespace
+#else
+  ContainerPrepareInfo prepareInfo;
+  prepareInfo.set_namespaces(CLONE_NEWNS); // in 0.25.0 and higher
+#endif
 
   // We accept <environment-var-name>#, where # can be 1-9, saved in array[#].
   // We also accept <environment-var-name>, saved in array[0].
@@ -532,6 +629,15 @@ Future<Option<ContainerPrepareInfo>> DockerVolumeDriverIsolator::prepare(
           deviceDriverNames[i] +
           "/volumes/" +
           volumeNames[i];
+
+      if (!os::exists(containerPaths[i])) {
+        Try<Nothing> mkdir = os::mkdir(containerPaths[i]);
+        if (mkdir.isError()) {
+          return Failure(
+            "DockerVolumeDriverIsolator could not create container path dir: " +
+            containerPaths[i]);
+        }
+      }
     }
 
     // note: mountpoint is not set yet, because we haven't mounted yet
@@ -632,7 +738,6 @@ Future<Option<ContainerPrepareInfo>> DockerVolumeDriverIsolator::prepare(
   // we need to attach previous and newly created mounts to
   // container path now
 
-
   // Note: infos has a record for each mount associated with this container
   // even if the mount is also used by another container.
   for (const auto &iter : prevConnectedExternalMounts) {
@@ -640,10 +745,18 @@ Future<Option<ContainerPrepareInfo>> DockerVolumeDriverIsolator::prepare(
     LOG(INFO) << "mount " << iter->mountpoint() << " was previously connected";
     LOG(INFO) << "queueing mount -n --rbind " << iter->mountpoint()
               << " " << iter->container_path();
+
+#if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 0240
+    commands.push_back("mount -n --rbind " +
+        iter->mountpoint() + " " +
+        iter->container_path());
+#else
     prepareInfo.add_commands()->set_value(
         "mount -n --rbind " +
         iter->mountpoint() + " " +
         iter->container_path());
+#endif
+
     infos.put(containerId, iter);
   }
 
@@ -679,8 +792,14 @@ Future<Option<ContainerPrepareInfo>> DockerVolumeDriverIsolator::prepare(
     LOG(INFO) << "queueing mount -n --rbind " << mountPoint
     << " " << containerPath;
     // -n means don't write to /etc/mtab
+
+#if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 0240
+    commands.push_back(
+            "mount -n --rbind " + mountPoint + " " + containerPath);
+#else
     prepareInfo.add_commands()->set_value(
             "mount -n --rbind " + mountPoint + " " + containerPath);
+#endif
 
     infos.put(containerId, iter);
   }
@@ -694,9 +813,25 @@ Future<Option<ContainerPrepareInfo>> DockerVolumeDriverIsolator::prepare(
   mesos::internal::slave::state::checkpoint(mountPbFilename,
     inUseMountsProtobuf);
 
+#if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 0240
+  CommandInfo command;
+  command.set_value(strings::join(" && ", commands));
+
+  return command;
+#else
   return prepareInfo;
+#endif
 }
 
+#if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 0240
+Future<Limitation> DockerVolumeDriverIsolator::watch(
+    const ContainerID& containerId)
+{
+  // No-op, for now.
+
+  return Future<Limitation>();
+}
+#else
 Future<ContainerLimitation> DockerVolumeDriverIsolator::watch(
     const ContainerID& containerId)
 {
@@ -704,6 +839,7 @@ Future<ContainerLimitation> DockerVolumeDriverIsolator::watch(
 
   return Future<ContainerLimitation>();
 }
+#endif
 
 Future<Nothing> DockerVolumeDriverIsolator::update(
     const ContainerID& containerId,
