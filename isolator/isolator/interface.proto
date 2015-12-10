@@ -7,8 +7,15 @@ message ExternalMount {
   required string containerid = 1;
   required string volumedriver = 2;
   required string volumename = 3;
+
+  // Absolute path to a directory on the host used to mount the external volume.
+  // This is chosen by the volume driver at run time and not configurable.
   optional string mountpoint = 4;
+
   optional string options = 5;
+
+  // Absolute path pointing to a directory or file in the container.
+  optional string container_path = 6;
 }
 
 // Our address book file is just one of these.

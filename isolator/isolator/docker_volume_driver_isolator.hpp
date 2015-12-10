@@ -54,6 +54,7 @@ static constexpr char VOL_DRIVER_DEFAULT[]        = "rexray";
 static constexpr char VOL_NAME_ENV_VAR_NAME[]     = "DVDI_VOLUME_NAME";
 static constexpr char VOL_DRIVER_ENV_VAR_NAME[]   = "DVDI_VOLUME_DRIVER";
 static constexpr char VOL_OPTS_ENV_VAR_NAME[]     = "DVDI_VOLUME_OPTS";
+static constexpr char VOL_CPATH_ENV_VAR_NAME[]    = "DVDI_VOLUME_CONTAINERPATH";
 
 //TODO this is temporary until the working_dir is exposed by mesosphere dev
 static constexpr char DVDI_MOUNTLIST_DEFAULT_DIR[]= "/tmp/mesos/";
@@ -131,6 +132,7 @@ public:
     const ContainerID& containerId);
 
 private:
+
   DockerVolumeDriverIsolator(const Parameters& parameters);
 
   const Parameters parameters;
@@ -152,7 +154,7 @@ private:
     const std::string&   callerLabelForLogging) const;
 
   // Attempts to mount specified external mount,
-  // returns non-empty string on success
+  // returns non-empty string (mountpoint) on success
   std::string mount(
     const ExternalMount& em,
     const std::string&   callerLabelForLogging) const;
@@ -161,6 +163,16 @@ private:
   // as defined in the list below.
   // This is intended as a tool to detect injection attack attempts.
   bool containsProhibitedChars(const std::string& s) const;
+
+  using envvararray = std::array<std::string, 10>;
+
+  // Helper function for parsing environement variables into arrays of string
+  // Returns true if environment variable name and value are valid
+  bool parseEnvVar(
+    const Environment_Variable&  envvar,
+    const char*                  expectedName,
+    envvararray                  (&insertTarget),
+    bool                         limitCharset) const;
 
   using containermountmap =
     multihashmap<ContainerID, process::Owned<ExternalMount>>;

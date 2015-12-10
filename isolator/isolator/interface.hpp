@@ -16,6 +16,7 @@ private:
   std::string mountPoint;
   //hashmap<std::string, std::string> opts; //TODO revisit this later
   std::string options;
+  std::string containerPath;
 
 public:
   // create Builder with default values assigned
@@ -58,6 +59,12 @@ public:
     return *this;
   }
 
+  Builder& setContainerPath( const std::string _containerPath )
+  {
+    this->containerPath = _containerPath;
+    return *this;
+  }
+
   ExternalMount* build()
   {
     ExternalMount* mount = new ExternalMount();
@@ -66,6 +73,7 @@ public:
     mount->set_volumename(volumeName);
     mount->set_mountpoint(mountPoint);
     mount->set_options(mountPoint);
+    mount->set_container_path(containerPath);
 
     //TODO revisit this later
     /*
