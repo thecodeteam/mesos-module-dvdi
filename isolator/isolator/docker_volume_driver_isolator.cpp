@@ -18,8 +18,6 @@
  */
 
 #include <fstream>
-#include <list>
-#include <array>
 #include <iostream>
 #include <sstream>
 
@@ -47,7 +45,6 @@ using namespace mesos::internal;
 using namespace process;
 
 using std::list;
-using std::set;
 using std::string;
 using std::array;
 
@@ -78,8 +75,8 @@ const char DockerVolumeDriverIsolator::prohibitedchars[NUM_PROHIBITED]  =
   '}', '[', ']', '\n', '\t', '\v', '\b', '\r', '\\'
 };
 
-std::string DockerVolumeDriverIsolator::mountPbFilename;
-std::string DockerVolumeDriverIsolator::mesosWorkingDir;
+string DockerVolumeDriverIsolator::mountPbFilename;
+string DockerVolumeDriverIsolator::mesosWorkingDir;
 
 
 DockerVolumeDriverIsolator::DockerVolumeDriverIsolator(
@@ -178,7 +175,7 @@ Future<Nothing> DockerVolumeDriverIsolator::recover(
   // ContainerID. This is because some of the ContainerIDs present when
   // it was recorded may now be gone. The key is a string rendering of the
   // ContainerID but not a ContainerID.
-  multihashmap<std::string, process::Owned<ExternalMount>>
+  multihashmap<string, process::Owned<ExternalMount>>
       originalContainerMounts;
 
   // Recover the state.
@@ -218,7 +215,7 @@ Future<Nothing> DockerVolumeDriverIsolator::recover(
   {
     ExternalMount mount = mountlist.mount(i);
 
-    std::string data;
+    string data;
     bool bSerialize = mount.SerializeToString(&data);
     LOG(INFO) << "External Mount: ";
     LOG(INFO) << data;
@@ -227,13 +224,13 @@ Future<Nothing> DockerVolumeDriverIsolator::recover(
       if (containsProhibitedChars(mount.volumedriver())) {
         LOG(ERROR) << "Volumedriver element in protobuf contains an illegal "
                    << "character, mount will be ignored";
-        mount.set_volumedriver(std::string(""));
+        mount.set_volumedriver(string(""));
       }
 
       if (containsProhibitedChars(mount.volumename())) {
         LOG(ERROR) << "Volumename element in protobuf contains an illegal "
                    << "character, mount will be ignored";
-        mount.set_volumename(std::string(""));
+        mount.set_volumename(string(""));
       }
 
       if (!mount.containerid().empty() && !mount.volumename().empty()) {
@@ -273,7 +270,7 @@ Future<Nothing> DockerVolumeDriverIsolator::recover(
       LOG(INFO) << "Running container(" << state.id
                 << ") re-identified on recover()";
       LOG(INFO) << "State.directory is (" << state.directory << ")";
-      std::list<process::Owned<ExternalMount>> mountsForContainer =
+      list<process::Owned<ExternalMount>> mountsForContainer =
           originalContainerMounts.get(state.id.value());
 
       for (const auto &iter : mountsForContainer) {
@@ -296,7 +293,7 @@ Future<Nothing> DockerVolumeDriverIsolator::recover(
                 << ") re-identified on recover()";
       LOG(INFO) << "State.directory is (" << state.directory() << ")";
 
-      std::list<process::Owned<ExternalMount>> mountsForContainer =
+      list<process::Owned<ExternalMount>> mountsForContainer =
           originalContainerMounts.get(state.container_id().value());
 
       for (const auto &iter : mountsForContainer) {
@@ -343,7 +340,7 @@ Future<Nothing> DockerVolumeDriverIsolator::recover(
 // even if a non-zero return code occurs.
 bool DockerVolumeDriverIsolator::unmount(
     const ExternalMount& em,
-    const std::string&   callerLabelForLogging ) const
+    const string&   callerLabelForLogging ) const
 {
   LOG(INFO) << em.volumedriver() << "/" << em.volumename()
             << " is being unmounted on "
@@ -397,17 +394,17 @@ bool DockerVolumeDriverIsolator::unmount(
 
 // Attempts to mount specified external mount,
 // returns non-empty string (mountpoint) on success.
-std::string DockerVolumeDriverIsolator::mount(
+string DockerVolumeDriverIsolator::mount(
     const ExternalMount& em,
-    const std::string&   callerLabelForLogging) const
+    const string&   callerLabelForLogging) const
 {
   LOG(INFO) << em.volumedriver() << "/" << em.volumename()
             << " is being mounted on "
             << callerLabelForLogging;
 
-  const std::string volumeDriver = em.volumedriver();
-  const std::string volumeName = em.volumename();
-  std::string mountpoint; // Return value init'd to empty.
+  const string volumeDriver = em.volumedriver();
+  const string volumeName = em.volumename();
+  string mountpoint; // Return value init'd to empty.
 
   if (system(NULL)) { // Is a command processor available?
     LOG(INFO) << "Invoking " << DVDCLI_MOUNT_CMD << " "
@@ -470,7 +467,7 @@ std::string DockerVolumeDriverIsolator::mount(
 }
 
 bool DockerVolumeDriverIsolator::containsProhibitedChars(
-    const std::string& s) const
+    const string& s) const
 {
   return (string::npos != s.find_first_of(prohibitedchars, 0, NUM_PROHIBITED));
 }
@@ -699,7 +696,7 @@ Future<Option<ContainerPrepareInfo>> DockerVolumeDriverIsolator::prepare(
   // The goal is we mount either ALL or NONE.
   std::vector<process::Owned<ExternalMount>> successfulExternalMounts;
   for (const auto &iter : unconnectedExternalMounts) {
-    std::string mountpoint = mount(*iter, "prepare()");
+    string mountpoint = mount(*iter, "prepare()");
 
     if (!mountpoint.empty()) {
 
@@ -761,8 +758,8 @@ Future<Option<ContainerPrepareInfo>> DockerVolumeDriverIsolator::prepare(
   }
 
   for (const auto &iter : successfulExternalMounts) {
-    std::string containerPath = iter->container_path();
-    std::string mountPoint = iter->mountpoint();
+    string containerPath = iter->container_path();
+    string mountPoint = iter->mountpoint();
 
     // Set the ownership and permissions to match the container path
     // as these are inherited from host path on bind mount.
@@ -877,7 +874,7 @@ Future<Nothing> DockerVolumeDriverIsolator::cleanup(
     return Nothing();
   }
 
-  std::list<process::Owned<ExternalMount>> mountsList =
+  list<process::Owned<ExternalMount>> mountsList =
       infos.get(containerId);
   // mountList now contains all the mounts used by this container.
 
