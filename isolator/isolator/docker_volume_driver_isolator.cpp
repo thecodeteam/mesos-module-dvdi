@@ -622,8 +622,9 @@ Future<Option<ContainerPrepareInfo>> DockerVolumeDriverIsolator::prepare(
       deviceDriverNames[i] = VOL_DRIVER_DEFAULT;
     }
 
-    // TODO consider not filling container path if it is empty
-    // this would mean leaving it oof shares mount across all containers
+    // TODO consider not filling container path if it is empty.
+    // Empty container path would mean leaving do not engage isolation on mount
+    // resulting in mount exposure across all containers.
     if (containerPaths[i].empty()) {
       containerPaths[i] = mesosWorkingDir + '/' +
           deviceDriverNames[i] +
@@ -698,7 +699,7 @@ Future<Option<ContainerPrepareInfo>> DockerVolumeDriverIsolator::prepare(
   // The goal is we mount either ALL or NONE.
   std::vector<process::Owned<ExternalMount>> successfulExternalMounts;
   foreach (const process::Owned<ExternalMount> &newMount,
-       unconnectedExternalMounts) {
+           unconnectedExternalMounts) {
     string mountpoint = mount(*newMount, "prepare()");
 
     if (!mountpoint.empty()) {
@@ -886,17 +887,17 @@ Future<Nothing> DockerVolumeDriverIsolator::cleanup(
 
   // Note: it is possible that some of these mounts are
   // also used by other tasks.
-  foreach( const process::Owned<ExternalMount> &mountFromThisContainer,
-       mountsList) {
+  foreach(const process::Owned<ExternalMount> &mountFromThisContainer,
+          mountsList) {
     size_t mountCount = 0;
 
     foreachvalue (const process::Owned<ExternalMount> &mount, infos) {
       // elem.second is ExternalMount.
 
       if (getExternalMountId(*mountFromThisContainer) ==
-          getExternalMountId(*(mount.get()))) {
+              getExternalMountId(*(mount.get()))) {
         if( ++mountCount > 1) {
-           break; // As soon as we find two users we can quit.
+          break; // As soon as we find two users we can quit.
         }
       }
     }
