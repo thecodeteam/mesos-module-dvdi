@@ -257,8 +257,9 @@ Future<Nothing> DockerVolumeDriverIsolator::recover(
 
   // Populate legacyMounts with all mounts at time file was written.
   // Note: some of the tasks using these may be gone now.
-  for (const auto &elem : originalContainerMounts) {
-    legacyMounts.put(getExternalMountId(*(elem.second.get())), elem.second);
+  foreachvalue (const process::Owned<ExternalMount> &mount,
+                originalContainerMounts) {
+    legacyMounts.put(getExternalMountId(*(mount.get())), mount);
   }
 
 #if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 0240
@@ -273,13 +274,13 @@ Future<Nothing> DockerVolumeDriverIsolator::recover(
       list<process::Owned<ExternalMount>> mountsForContainer =
           originalContainerMounts.get(state.id.value());
 
-      for (const auto &iter : mountsForContainer) {
+      foreach (const process::Owned<ExternalMount> &mount, mountsForContainer) {
 
         // Copy task element to rebuild infos.
-        infos.put(state.id, iter);
-        ExternalMountID id = getExternalMountId(*iter);
+        infos.put(state.id, mount);
+        ExternalMountID id = getExternalMountId(*mount);
         LOG(INFO) << "Re-identified a preserved mount, id is " << id;
-        inUseMounts.put(id, iter);
+        inUseMounts.put(id, mount);
       }
     }
   }
@@ -296,12 +297,12 @@ Future<Nothing> DockerVolumeDriverIsolator::recover(
       list<process::Owned<ExternalMount>> mountsForContainer =
           originalContainerMounts.get(state.container_id().value());
 
-      for (const auto &iter : mountsForContainer) {
+      foreach (const process::Owned<ExternalMount> &mount, mountsForContainer) {
         // Copy task element to rebuild infos.
-        infos.put(state.container_id(), iter);
-        ExternalMountID id = getExternalMountId(*iter);
+        infos.put(state.container_id(), mount);
+        ExternalMountID id = getExternalMountId(*mount);
         LOG(INFO) << "Re-identified a preserved mount, id is " << id;
-        inUseMounts.put(id, iter);
+        inUseMounts.put(id, mount);
       }
     }
   }
@@ -309,9 +310,9 @@ Future<Nothing> DockerVolumeDriverIsolator::recover(
 
   // Create ExternalMountList protobuf message to checkpoint
   ExternalMountList inUseMountsProtobuf;
-  for( const auto &iter : inUseMounts) {
-    ExternalMount* mount = inUseMountsProtobuf.add_mount();
-    mount->CopyFrom(*(iter.second.get()));
+  foreachvalue( const process::Owned<ExternalMount> &mount, inUseMounts) {
+    ExternalMount* mptr = inUseMountsProtobuf.add_mount();
+    mptr->CopyFrom(*(mount.get()));
   }
 
   //checkpoint the dvdi mounts for persistence
@@ -320,14 +321,14 @@ Future<Nothing> DockerVolumeDriverIsolator::recover(
 
   // We will now reduce legacyMounts to only the mounts that should be removed.
   // We will do this by deleting the mounts still in use.
-  for( const auto &iter : inUseMounts) {
-    legacyMounts.erase(iter.first);
+  foreachkey( const ExternalMountID &id, inUseMounts) {
+    legacyMounts.erase(id);
   }
 
   // legacyMounts now contains only "orphan" mounts whose task is gone.
   // We will attempt to unmount these.
-  for (const auto &iter : legacyMounts) {
-    if (!unmount(*(iter.second.get()), "recover()")) {
+  foreachvalue (const process::Owned<ExternalMount> &mount, legacyMounts) {
+    if (!unmount(*(mount.get()), "recover()")) {
       return Failure("recover() failed during unmount attempt");
     }
   }
@@ -567,7 +568,7 @@ Future<Option<ContainerPrepareInfo>> DockerVolumeDriverIsolator::prepare(
 
   // Iterate through the environment variables,
   // looking for the ones we need.
-  foreach (const auto &variable,
+  foreach (const Environment_Variable &variable,
            executorInfo.command().environment().variables()) {
 
     if (strings::startsWith(variable.name(), VOL_NAME_ENV_VAR_NAME)) {
@@ -621,6 +622,9 @@ Future<Option<ContainerPrepareInfo>> DockerVolumeDriverIsolator::prepare(
       deviceDriverNames[i] = VOL_DRIVER_DEFAULT;
     }
 
+    // TODO consider not filling container path if it is empty.
+    // Empty container path would mean leaving do not engage isolation on mount
+    // resulting in mount exposure across all containers.
     if (containerPaths[i].empty()) {
       containerPaths[i] = mesosWorkingDir + '/' +
           deviceDriverNames[i] +
@@ -638,7 +642,7 @@ Future<Option<ContainerPrepareInfo>> DockerVolumeDriverIsolator::prepare(
     }
 
     // note: mountpoint is not set yet, because we haven't mounted yet
-    process::Owned<ExternalMount> mount(
+    process::Owned<ExternalMount> requestedMount(
       Builder().setContainerId(stringify(containerId))
                .setVolumeDriver(deviceDriverNames[i])
                .setVolumeName(volumeNames[i])
@@ -649,10 +653,11 @@ Future<Option<ContainerPrepareInfo>> DockerVolumeDriverIsolator::prepare(
 
     // Check for duplicates in environment.
     bool duplicateInEnv = false;
-    for (const auto &ent : requestedExternalMounts) {
+    foreach (const process::Owned<ExternalMount> &mount,
+             requestedExternalMounts) {
 
-      if (getExternalMountId(*(ent.get())) ==
-             getExternalMountId(*(mount.get())) ) {
+      if (getExternalMountId(*(mount.get())) ==
+              getExternalMountId(*(requestedMount.get())) ) {
         duplicateInEnv = true;
         break;
       }
@@ -660,34 +665,32 @@ Future<Option<ContainerPrepareInfo>> DockerVolumeDriverIsolator::prepare(
 
     if (duplicateInEnv) {
       LOG(INFO) << "Duplicate mount request("
-                << (*mount).SerializeAsString()
+                << requestedMount->volumedriver()
+                << "/" << requestedMount->volumename()
                 << ") in environment will be ignored";
       continue;
     }
 
-    requestedExternalMounts.push_back(mount);
+    requestedExternalMounts.push_back(requestedMount);
 
     // Now check if another container is already using this same mount.
     bool mountInUse = false;
-    for (const auto &ent : infos) {
+    foreachvalue (const process::Owned<ExternalMount> &mount, infos) {
 
-      if (getExternalMountId(*(ent.second.get())) ==
-            getExternalMountId(*(mount.get())) ) {
+      if (getExternalMountId(*(mount.get())) ==
+            getExternalMountId(*(requestedMount.get())) ) {
         mountInUse = true;
-        // TODO must make a new External Mount here because
-        // container path can be different, can't
-        // copy ent.second
-        mount->set_mountpoint(ent.second->mountpoint());
-        prevConnectedExternalMounts.push_back(mount);
-        LOG(INFO) << "Requested mount(" << mount->volumedriver() << "/"
-                  << mount->volumename()
+        requestedMount->set_mountpoint(mount->mountpoint());
+        prevConnectedExternalMounts.push_back(requestedMount);
+        LOG(INFO) << "Requested mount(" << requestedMount->volumedriver() << "/"
+                  << requestedMount->volumename()
                   << ") is already mounted by another container";
         break;
       }
     }
 
     if (!mountInUse) {
-      unconnectedExternalMounts.push_back(mount);
+      unconnectedExternalMounts.push_back(requestedMount);
     }
   }
 
@@ -695,30 +698,22 @@ Future<Option<ContainerPrepareInfo>> DockerVolumeDriverIsolator::prepare(
   // We need this because, if there is a failure, we need to unmount these.
   // The goal is we mount either ALL or NONE.
   std::vector<process::Owned<ExternalMount>> successfulExternalMounts;
-  for (const auto &iter : unconnectedExternalMounts) {
-    string mountpoint = mount(*iter, "prepare()");
+  foreach (const process::Owned<ExternalMount> &newMount,
+           unconnectedExternalMounts) {
+    string mountpoint = mount(*newMount, "prepare()");
 
     if (!mountpoint.empty()) {
-
       // Need to construct a newExternalMount because we just
       // learned the mountpoint.
-      process::Owned<ExternalMount> newmount(
-        Builder().setContainerId(stringify(containerId))
-                 .setVolumeDriver(iter->volumedriver())
-                 .setVolumeName(iter->volumename())
-                 .setOptions(iter->options())
-                 .setContainerPath(iter->container_path())
-                 .setMountPoint(mountpoint)
-                 .build()
-        );
-
-      successfulExternalMounts.push_back(newmount);
+      newMount->set_mountpoint(mountpoint);
+      successfulExternalMounts.push_back(newMount);
     } else {
       // Once any mount attempt fails, give up on whole list
       // and attempt to undo the mounts we already made.
       LOG(ERROR) << "Mount failed during prepare()";
 
-      for (const auto &unmountme : successfulExternalMounts) {
+      foreach (const process::Owned<ExternalMount> &unmountme,
+               successfulExternalMounts) {
 
         if (unmount(*unmountme, "prepare()-reverting mounts after failure")) {
           LOG(ERROR) << "During prepare() of a container requesting multiple "
@@ -732,39 +727,52 @@ Future<Option<ContainerPrepareInfo>> DockerVolumeDriverIsolator::prepare(
     }
   }
 
-  // we need to attach previous and newly created mounts to
-  // container path now
+  // we need to attach previous and newly created mounts to container path now
+  foreach (const process::Owned<ExternalMount> &prevMount,
+           prevConnectedExternalMounts) {
 
-  // Note: infos has a record for each mount associated with this container
-  // even if the mount is also used by another container.
-  for (const auto &iter : prevConnectedExternalMounts) {
+    LOG(INFO) << "mount " << prevMount->mountpoint()
+              << " was previously connected";
+    // Note: infos has a record for each mount associated with this container
+    // even if the mount is also used by another container.
+    infos.put(containerId, prevMount);
 
-    LOG(INFO) << "mount " << iter->mountpoint() << " was previously connected";
-    LOG(INFO) << "queueing mount -n --rbind " << iter->mountpoint()
-              << " " << iter->container_path();
+    if (prevMount->container_path().empty()) {
+      continue; // empty container path means skip containerization
+    }
+
+    LOG(INFO) << "queueing mount -n --rbind " << prevMount->mountpoint()
+              << " " << prevMount->container_path();
 
 #if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 0240
     commands.push_back("mount -n --rbind " +
-        iter->mountpoint() + " " +
-        iter->container_path());
+        prevMount->mountpoint() + " " +
+        prevMount->container_path());
 #else
     prepareInfo.add_commands()->set_value(
         "mount -n --rbind " +
-        iter->mountpoint() + " " +
-        iter->container_path());
+        prevMount->mountpoint() + " " +
+        prevMount->container_path());
 #endif
-
-    infos.put(containerId, iter);
   }
 
-  for (const auto &iter : successfulExternalMounts) {
-    string containerPath = iter->container_path();
-    string mountPoint = iter->mountpoint();
+  foreach (const process::Owned<ExternalMount> &newMount,
+         successfulExternalMounts) {
+    infos.put(containerId, newMount);
 
+    if (newMount->container_path().empty()) {
+      continue; // empty container path means skip containerization
+    }
+
+    string containerPath = newMount->container_path();
+    string mountPoint = newMount->mountpoint();
+
+/* TODO consider whether we should set mountpoint ownership and permissions
     // Set the ownership and permissions to match the container path
     // as these are inherited from host path on bind mount.
     struct stat stat;
     if (::stat(containerPath.c_str(), &stat) < 0) {
+    // TODO cannot just return Failure here because we already performed mounts
       return Failure("Failed to get permissions on '" +
                       containerPath + "'" +
                       ": " + strerror(errno));
@@ -785,27 +793,26 @@ Future<Option<ContainerPrepareInfo>> DockerVolumeDriverIsolator::prepare(
                      "': " +
                      chown.error());
     }
+*/
 
     LOG(INFO) << "queueing mount -n --rbind " << mountPoint
-    << " " << containerPath;
-    // -n means don't write to /etc/mtab
+              << " " << containerPath;
 
 #if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 0240
+    // -n means don't write to /etc/mtab
     commands.push_back(
             "mount -n --rbind " + mountPoint + " " + containerPath);
 #else
     prepareInfo.add_commands()->set_value(
             "mount -n --rbind " + mountPoint + " " + containerPath);
 #endif
-
-    infos.put(containerId, iter);
   }
 
   // Create ExternalMountList protobuf message to checkpoint
   ExternalMountList inUseMountsProtobuf;
-  for( const auto &iter : infos) {
-    ExternalMount* mount = inUseMountsProtobuf.add_mount();
-    mount->CopyFrom(*(iter.second.get()));
+  foreachvalue( const process::Owned<ExternalMount> &mount, infos) {
+    ExternalMount* mountptr = inUseMountsProtobuf.add_mount();
+    mountptr->CopyFrom(*(mount.get()));
   }
   mesos::internal::slave::state::checkpoint(mountPbFilename,
     inUseMountsProtobuf);
@@ -880,16 +887,17 @@ Future<Nothing> DockerVolumeDriverIsolator::cleanup(
 
   // Note: it is possible that some of these mounts are
   // also used by other tasks.
-  for( const auto &iter : mountsList) {
+  foreach(const process::Owned<ExternalMount> &mountFromThisContainer,
+          mountsList) {
     size_t mountCount = 0;
 
-    for (const auto &elem : infos) {
+    foreachvalue (const process::Owned<ExternalMount> &mount, infos) {
       // elem.second is ExternalMount.
 
-      if (getExternalMountId(*iter) ==
-        getExternalMountId(*(elem.second.get()))) {
+      if (getExternalMountId(*mountFromThisContainer) ==
+              getExternalMountId(*(mount.get()))) {
         if( ++mountCount > 1) {
-           break; // As soon as we find two users we can quit.
+          break; // As soon as we find two users we can quit.
         }
       }
     }
@@ -897,7 +905,7 @@ Future<Nothing> DockerVolumeDriverIsolator::cleanup(
     if (1 == mountCount) {
       // This container was the only, or last, user of this mount.
 
-      if (!unmount(*iter, "cleanup()")) {
+      if (!unmount(*mountFromThisContainer, "cleanup()")) {
         return Failure("cleanup() failed during unmount attempt");
       }
     }
@@ -908,9 +916,9 @@ Future<Nothing> DockerVolumeDriverIsolator::cleanup(
 
   // Create ExternalMountList protobuf message to checkpoint
   ExternalMountList inUseMountsProtobuf;
-  for( const auto &iter : infos) {
-    ExternalMount* mount = inUseMountsProtobuf.add_mount();
-    mount->CopyFrom(*(iter.second.get()));
+  foreachvalue( const process::Owned<ExternalMount> &mount, infos) {
+    ExternalMount* mountptr = inUseMountsProtobuf.add_mount();
+    mountptr->CopyFrom(*(mount.get()));
   }
   mesos::internal::slave::state::checkpoint(mountPbFilename,
     inUseMountsProtobuf);
