@@ -102,24 +102,19 @@ Try<Isolator*> DockerVolumeDriverIsolator::create(
   }
 
   LOG(INFO) << "DockerVolumeDriverIsolator::create() called";
-  mountPbFilename = DVDI_MOUNTLIST_DEFAULT_DIR;
-  //TODO: we dont have the flags.work_dir yet. Hardcoded for /tmp/mesos
-  //this will be overwritten with environment parameters below
   mesosWorkingDir = DEFAULT_WORKING_DIR;
 
   foreach (const Parameter& parameter, parameters.parameter()) {
     if (parameter.key() == DVDI_WORKDIR_PARAM_NAME) {
       LOG(INFO) << "parameter " << parameter.key() << ":" << parameter.value();
 
-      if (parameter.value().length() > 2 &&
-          strings::startsWith(parameter.value(), "/") &&
-          strings::endsWith(parameter.value(), "/")) {
-        mountPbFilename = parameter.value();
+      if (parameter.value().length() > 1 &&
+          strings::startsWith(parameter.value(), "/")) {
         mesosWorkingDir = parameter.value();
       } else {
         std::stringstream ss;
         ss << "DockerVolumeDriverIsolator " << DVDI_WORKDIR_PARAM_NAME
-           << " parameter is invalid, must start and end with /";
+           << " parameter is invalid, must start with /";
         return Error(ss.str());
       }
     }
@@ -511,6 +506,30 @@ bool DockerVolumeDriverIsolator::parseEnvVar(
   return true;
 }
 
+
+Failure DockerVolumeDriverIsolator::revertMountlist(
+    const char*                                      operation,
+    const std::vector<process::Owned<ExternalMount>> mounts) const
+{
+  // Once any mount attempt fails, give up on whole list
+  // and attempt to undo the mounts we already made.
+  LOG(ERROR) << operation << " failed during prepare()";
+
+  foreach (const process::Owned<ExternalMount> &unmountme, mounts) {
+
+    if (unmount(*unmountme, "prepare()-reverting mounts after failure")) {
+      LOG(ERROR) << "During prepare() of a container requesting multiple "
+                 << "mounts, a " << operation
+                 << " failure occurred after making "
+                 << "at least one mount and a second failure occurred "
+                 << "while attempting to remove the earlier mount(s)";
+      break;
+    }
+  }
+
+  return Failure(string("prepare() failed during ") + operation + " attempt");
+}
+
 // Prepare runs BEFORE a task is started
 // will check if the volume is already mounted and if not,
 // will mount the volume.
@@ -625,19 +644,14 @@ Future<Option<ContainerPrepareInfo>> DockerVolumeDriverIsolator::prepare(
     // TODO consider not filling container path if it is empty.
     // Empty container path would mean leaving do not engage isolation on mount
     // resulting in mount exposure across all containers.
-    if (containerPaths[i].empty()) {
-      containerPaths[i] = mesosWorkingDir + '/' +
-          deviceDriverNames[i] +
-          "/volumes/" +
-          volumeNames[i];
-
-      if (!os::exists(containerPaths[i])) {
-        Try<Nothing> mkdir = os::mkdir(containerPaths[i]);
-        if (mkdir.isError()) {
-          return Failure(
-            "DockerVolumeDriverIsolator could not create container path dir: " +
-            containerPaths[i]);
-        }
+    if (!containerPaths[i].empty()) {
+      if (!strings::startsWith(containerPaths[i], "/")) {
+        return Failure("prepare() failed, containerpaths must start with /");
+      }
+      if (!os::exists(containerPaths[i]) &&
+          !strings::startsWith(containerPaths[i], "/tmp/")) {
+        return Failure(
+          "prepare() failed, containerpaths must pre-exist, or be under /tmp");
       }
     }
 
@@ -664,6 +678,9 @@ Future<Option<ContainerPrepareInfo>> DockerVolumeDriverIsolator::prepare(
     }
 
     if (duplicateInEnv) {
+      if (!containerPaths[i].empty()) {
+        return Failure("prepare() failed, duplicated mount with containerpath");
+      }
       LOG(INFO) << "Duplicate mount request("
                 << requestedMount->volumedriver()
                 << "/" << requestedMount->volumename()
@@ -685,13 +702,27 @@ Future<Option<ContainerPrepareInfo>> DockerVolumeDriverIsolator::prepare(
         LOG(INFO) << "Requested mount(" << requestedMount->volumedriver() << "/"
                   << requestedMount->volumename()
                   << ") is already mounted by another container";
+        if (!containerPaths[i].empty()) {
+          return Failure(
+                  "prepare() failed, containerpath request on existing mount");
+        }
         break;
       }
     }
 
     if (!mountInUse) {
       unconnectedExternalMounts.push_back(requestedMount);
+      if (!containerPaths[i].empty() &&
+          !os::exists(containerPaths[i])) {
+        Try<Nothing> mkdir = os::mkdir(containerPaths[i]);
+        if (mkdir.isError()) {
+          return Failure(
+            "DockerVolumeDriverIsolator could not create container path dir: " +
+            containerPaths[i]);
+        }
+      }
     }
+
   }
 
   // As we connect mounts we will build a list of successful mounts.
@@ -710,24 +741,10 @@ Future<Option<ContainerPrepareInfo>> DockerVolumeDriverIsolator::prepare(
     } else {
       // Once any mount attempt fails, give up on whole list
       // and attempt to undo the mounts we already made.
-      LOG(ERROR) << "Mount failed during prepare()";
-
-      foreach (const process::Owned<ExternalMount> &unmountme,
-               successfulExternalMounts) {
-
-        if (unmount(*unmountme, "prepare()-reverting mounts after failure")) {
-          LOG(ERROR) << "During prepare() of a container requesting multiple "
-                     << "mounts, a mount failure occurred after making "
-                     << "at least one mount and a second failure occurred "
-                     << "while attempting to remove the earlier mount(s)";
-          break;
-        }
-      }
-      return Failure("prepare() failed during mount attempt");
+      return revertMountlist("mount",successfulExternalMounts);
     }
   }
 
-  // we need to attach previous and newly created mounts to container path now
   foreach (const process::Owned<ExternalMount> &prevMount,
            prevConnectedExternalMounts) {
 
@@ -736,24 +753,6 @@ Future<Option<ContainerPrepareInfo>> DockerVolumeDriverIsolator::prepare(
     // Note: infos has a record for each mount associated with this container
     // even if the mount is also used by another container.
     infos.put(containerId, prevMount);
-
-    if (prevMount->container_path().empty()) {
-      continue; // empty container path means skip containerization
-    }
-
-    LOG(INFO) << "queueing mount -n --rbind " << prevMount->mountpoint()
-              << " " << prevMount->container_path();
-
-#if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 0240
-    commands.push_back("mount -n --rbind " +
-        prevMount->mountpoint() + " " +
-        prevMount->container_path());
-#else
-    prepareInfo.add_commands()->set_value(
-        "mount -n --rbind " +
-        prevMount->mountpoint() + " " +
-        prevMount->container_path());
-#endif
   }
 
   foreach (const process::Owned<ExternalMount> &newMount,
@@ -767,33 +766,28 @@ Future<Option<ContainerPrepareInfo>> DockerVolumeDriverIsolator::prepare(
     string containerPath = newMount->container_path();
     string mountPoint = newMount->mountpoint();
 
-/* TODO consider whether we should set mountpoint ownership and permissions
     // Set the ownership and permissions to match the container path
     // as these are inherited from host path on bind mount.
     struct stat stat;
     if (::stat(containerPath.c_str(), &stat) < 0) {
-    // TODO cannot just return Failure here because we already performed mounts
-      return Failure("Failed to get permissions on '" +
-                      containerPath + "'" +
-                      ": " + strerror(errno));
+      LOG(ERROR) << "Failed to get permissions on " << containerPath
+                 << " stat returned " << strerror(errno);
+      return revertMountlist("stat",successfulExternalMounts);
     }
 
     Try<Nothing> chmod = os::chmod(mountPoint, stat.st_mode);
     if (chmod.isError()) {
-      return Failure("Failed to chmod hostPath '" +
-                     mountPoint +
-                     "': " +
-                     chmod.error());
+      LOG(ERROR) << "Failed to get permissions on " << containerPath
+                 << " chmod returned " << chmod.error();
+      return revertMountlist("chmod",successfulExternalMounts);
     }
 
     Try<Nothing> chown = os::chown(stat.st_uid, stat.st_gid, mountPoint, false);
     if (chown.isError()) {
-      return Failure("Failed to chown hostPath '" +
-                     mountPoint +
-                     "': " +
-                     chown.error());
+      LOG(ERROR) << "Failed to get permissions on " << containerPath
+                 << " chown returned " << chown.error();
+      return revertMountlist("chown",successfulExternalMounts);
     }
-*/
 
     LOG(INFO) << "queueing mount -n --rbind " << mountPoint
               << " " << containerPath;

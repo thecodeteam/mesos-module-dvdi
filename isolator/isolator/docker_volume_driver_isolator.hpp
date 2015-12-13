@@ -60,12 +60,8 @@ static constexpr char VOL_DRIVER_ENV_VAR_NAME[]   = "DVDI_VOLUME_DRIVER";
 static constexpr char VOL_OPTS_ENV_VAR_NAME[]     = "DVDI_VOLUME_OPTS";
 static constexpr char VOL_CPATH_ENV_VAR_NAME[]    = "DVDI_VOLUME_CONTAINERPATH";
 
-//TODO this is temporary until the working_dir is exposed by mesosphere dev
-static constexpr char DVDI_MOUNTLIST_DEFAULT_DIR[]= "/tmp/mesos/";
 static constexpr char DVDI_MOUNTLIST_FILENAME[]   = "dvdimounts.pb";
 static constexpr char DVDI_WORKDIR_PARAM_NAME[]   = "work_dir";
-
-//TODO this is temporary until the working_dir is exposed by mesosphere dev
 static constexpr char DEFAULT_WORKING_DIR[]       = "/tmp/mesos";
 
 #if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 0240
@@ -199,6 +195,12 @@ private:
     const char*                  expectedName,
     envvararray                  (&insertTarget),
     bool                         limitCharset) const;
+
+  // helper function to "unroll" mounts when a list is submitted
+  // and a munt fails. Goal is do all mounts or none.
+  process::Failure revertMountlist(
+    const char*                                      operation,
+    const std::vector<process::Owned<ExternalMount>> mounts) const;
 
   using containermountmap =
     multihashmap<ContainerID, process::Owned<ExternalMount>>;
