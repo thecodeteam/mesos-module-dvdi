@@ -55,7 +55,7 @@ Issuing a `rexray volume` should return you a list of volumes if the configurati
 
 The `Docker Volume Driver Isolator Module` can optionally pre-emptively detach any existing attachments to other instances before attempting a mount. This will enable use cases for availability where another instance must be able to take control of a volume without the current owner instance being involved. The operation is considered equivalent to a power off of the existing instance for the device.
 
-If this capability is desired, a rexray configuration file /etc/rexray/config.yml needs to be created with the addition of the preempt and ignoreUsedCount flags in their respective sections as seen below. More details can be found at [REX-Ray Configuration Guide](http://rexray.readthedocs.org/en/stable/user-guide/config/#configuration-properties) Please check the guide for pre-emptive volume mount compatibility with your backing storage.
+If this capability is desired, rexray version 0.3.1 or higher needs to be used and a rexray configuration file /etc/rexray/config.yml needs to be created with the addition of the preempt and ignoreUsedCount flags in their respective sections as seen below. More details can be found at [REX-Ray Configuration Guide](http://rexray.readthedocs.org/en/stable/user-guide/config/#configuration-properties) Please check the guide for pre-emptive volume mount compatibility with your backing storage.
 
 ```
 rexray:
@@ -73,6 +73,17 @@ openStack:
   tenantName: tenantName
   regionName: regionName
 ```
+
+#### Volume Containerization
+
+If you are looking to enhance the security on your application's external volumes, you can specify a containerpath which will then provide containerization or isolation of those mounts.
+
+The value specified for the containerpath will affect the behavior of the containerization.
+
+- If no containerpath is provided, the directory will be autocreated and the volume mount will succeed but will provide no containerization
+- If a containerpath doesn't start with / (meaning an absolute path is not provided), this is invalid and the  task will be reported as FAILURE
+- If a containerpath starts with something other than /tmp (meaning it is not destined to the /tmp folder), the directory must pre-exist or you get FAILURE
+- If a containerpath starts with /tmp (meaning it is destined to reside within the /tmp folder), the directory will be autocreated if needed and the volume mount will be owned by root:root if it doesn't preexist
 
 ### Docker Volume Driver CLI
 ---
