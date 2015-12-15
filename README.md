@@ -51,6 +51,29 @@ curl -sSL https://dl.bintray.com/emccode/rexray/install | sh -
 
 Issuing a `rexray volume` should return you a list of volumes if the configuration is correct for your storage platform.
 
+#### Pre-emptive Volume Mount
+
+The `Docker Volume Driver Isolator Module` can optionally pre-emptively detach any existing attachments to other instances before attempting a mount. This will enable use cases for availability where another instance must be able to take control of a volume without the current owner instance being involved. The operation is considered equivalent to a power off of the existing instance for the device.
+
+If this capability is desired, a rexray configuration file /etc/rexray/config.yml needs to be created with the addition of the preempt and ignoreUsedCount flags in their respective sections as seen below. More details can be found at [REX-Ray Configuration Guide](http://rexray.readthedocs.org/en/stable/user-guide/config/#configuration-properties) Please check the guide for pre-emptive volume mount compatibility with your backing storage.
+
+```
+rexray:
+  storageDrivers:
+  - openstack
+  volume:
+    mount:
+      preempt: true
+    unmount:
+      ignoreUsedCount: true
+openStack:
+  authUrl: https://authUrl:35357/v2.0/
+  username: username
+  password: password
+  tenantName: tenantName
+  regionName: regionName
+```
+
 ### Docker Volume Driver CLI
 ---
 
