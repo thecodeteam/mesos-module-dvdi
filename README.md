@@ -85,6 +85,28 @@ The value specified for the containerpath will affect the behavior of the contai
 - If a containerpath starts with something other than /tmp (meaning it is not destined to the /tmp folder), the directory must pre-exist or you get FAILURE
 - If a containerpath starts with /tmp (meaning it is destined to reside within the /tmp folder), the directory will be autocreated if needed and the volume mount will be owned by root:root if it doesn't preexist
 
+**Some examples...**
+
+The example below will autogenerate the directory because its within the /tmp folder and provide containerization of the volume at /tmp/ebs-auto
+```
+"env": {
+  "DVDI_VOLUME_NAME": "VolXYZ",
+  "DVDI_VOLUME_DRIVER": "rexray",
+  "DVDI_VOLUME_OPTS": "size=5,iops=150,volumetype=io1,newfstype=xfs,overwritefs=true",
+  "DVDI_VOLUME_CONTAINERPATH": "/tmp/ebs-auto"
+}
+```
+
+The next example will fail if the directory /etc/ebs-explicit does not exist. The result of this will provide a mount with containerization at /etc/ebs-explicit
+```
+"env": {
+  "DVDI_VOLUME_NAME": "test12345",
+  "DVDI_VOLUME_DRIVER": "rexray",
+  "DVDI_VOLUME_OPTS": "size=5,iops=150,volumetype=io1,newfstype=xfs,overwritefs=true",
+  "DVDI_VOLUME_CONTAINERPATH": "/etc/ebs-explicit"
+}
+```
+
 ### Docker Volume Driver CLI
 ---
 
