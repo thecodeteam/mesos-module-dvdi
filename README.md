@@ -4,7 +4,7 @@ This repo contains the `Docker Volume Driver Isolator Module` for Mesos.  The pu
 
 The module leverages [dvdcli](https://github.com/clintonskitson/dvdcli) to enable any existing `Docker Volume Drivers` to be used **without** the Docker containerizer.  All Volume Drivers that work with `Docker`, **will also** work with `dvdcli` and thus this Isolator Module.
 
-Currently it targets Mesos 0.23.1, 0.24.1, and 0.25.0.
+Currently it targets Mesos 0.23.1, 0.24.1, 0.25.0, and 0.26.0.
 
 Project Summary
 -------------------
@@ -213,7 +213,7 @@ Following this locate the `libmesos_dvdi_isolator-<version>.so` file under `isol
 These steps can be used to compile a custom Mesos build image. Replace X.YY.Z to correspond to the version of Mesos and its matching Isolator version.
 ```
 docker build -t name/mesos-build-module-dev:X.YY.Z - < Dockerfile-mesos-build-module-dev
-docker build -t name/mesos-module-dvdi-dev:X.YY.Z - < Dockerfile-mesos-build-module-dvdi
+docker build -t name/mesos-module-dvdi-dev:X.YY.Zgr - < Dockerfile-mesos-build-module-dvdi
 ```
 
 # Release information
