@@ -544,12 +544,16 @@ Future<Option<CommandInfo>> DockerVolumeDriverIsolator::prepare(
   const string& directory,
   const Option<string>& rootfs,
   const Option<string>& user)
-#else
+#elif MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 0270
 Future<Option<ContainerPrepareInfo>> DockerVolumeDriverIsolator::prepare(
   const ContainerID& containerId,
   const ExecutorInfo& executorInfo,
   const string& directory,
   const Option<string>& user)
+#else
+Future<Option<ContainerLaunchInfo>> DockerVolumeDriverIsolator::prepare(
+  const ContainerID& containerId,
+  const ContainerConfig& containerConfig)
 #endif
 {
   LOG(INFO) << "Preparing external storage for container: "
@@ -558,6 +562,10 @@ Future<Option<ContainerPrepareInfo>> DockerVolumeDriverIsolator::prepare(
   if (infos.contains(containerId)) {
     return Failure("Container has already been prepared");
   }
+
+#if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT >= 0270
+  const ExecutorInfo& executorInfo = containerConfig.executorinfo();
+#endif
 
   // Get things we need from task's environment in ExecutoInfo.
   if (!executorInfo.command().has_environment()) {
@@ -571,9 +579,14 @@ Future<Option<ContainerPrepareInfo>> DockerVolumeDriverIsolator::prepare(
   list<string> commands;
 #elif MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 0250
   ContainerPrepareInfo prepareInfo;
-#else
+#elif MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 0270
   ContainerPrepareInfo prepareInfo;
-  prepareInfo.set_namespaces(CLONE_NEWNS); // in 0.25.0 and higher
+  prepareInfo.set_namespaces(CLONE_NEWNS);
+#else
+  //yes, this should be called launchInfo, but it side step making a lot of
+  //code changes.
+  ContainerLaunchInfo prepareInfo;
+  prepareInfo.set_namespaces(CLONE_NEWNS);
 #endif
 
   // We accept <environment-var-name>#, where # can be 1-9, saved in array[#].
@@ -857,7 +870,7 @@ Future<ResourceStatistics> DockerVolumeDriverIsolator::usage(
   return ResourceStatistics();
 }
 
-process::Future<Nothing> DockerVolumeDriverIsolator::isolate(
+Future<Nothing> DockerVolumeDriverIsolator::isolate(
     const ContainerID& containerId,
     pid_t pid)
 {

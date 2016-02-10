@@ -33,11 +33,7 @@
 #include <stout/try.hpp>
 
 #include <slave/flags.hpp>
-#if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 0240
 #include <mesos/slave/isolator.hpp>
-#else
-#include <slave/containerizer/isolator.hpp>
-#endif
 
 #include "interface.hpp"
 using namespace emccode::isolator::mount;
@@ -97,8 +93,6 @@ public:
   //     VOL_NAME_ENV_VAR_NAME is defined below
   //     This is volume name, not ID.
   //     Warning, name collisions on name can be treacherous.
-  //     For now a simple string value is presumed, will need to enhance to
-  //     support a JSON array to allow multiple volume mounts per task.
   // 2. get desired volume driver (volumedriver=) from ENVIRONMENT from task in ExecutorInfo
   //     VOL_DRIVER_ENV_VAR_NAME is defined below
   // 3. Check for other pre-existing users of the mount.
@@ -114,12 +108,16 @@ public:
     const std::string& directory,
     const Option<std::string>& rootfs,
     const Option<std::string>& user);
-#else
+#elif MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 0270
   virtual process::Future<Option<ContainerPrepareInfo>> prepare(
     const ContainerID& containerId,
     const ExecutorInfo& executorInfo,
     const std::string& directory,
     const Option<std::string>& user);
+#else
+  virtual process::Future<Option<ContainerLaunchInfo>> prepare(
+    const ContainerID& containerId,
+    const ContainerConfig& containerConfig);
 #endif
 
   // Nothing will be done at task start
@@ -135,6 +133,7 @@ public:
   virtual process::Future<ContainerLimitation> watch(
     const ContainerID& containerId);
 #endif
+
   // no-op, nothing enforced
   virtual process::Future<Nothing> update(
     const ContainerID& containerId,
