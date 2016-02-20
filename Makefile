@@ -159,7 +159,7 @@ SVN_MAKEFILE := $(SVN_SRC_DIR)/Makefile
 SVN_SRC_BIN := $(SVN_SRC_DIR)/subversion/svn/svn
 SVN := $(SVN_OPT_DIR)/bin/svn
 
-SQLITE_VER := 3071501
+SQLITE_VER := 3110000
 SQLITE_SRC_ZIP := sqlite-amalgamation-$(SQLITE_VER).zip
 SQLITE_SRC_URL := http://www.sqlite.org
 SQLITE_SRC_ZIP_DIR := $(SVN_SRC_DIR)/sqlite-amalgamation-$(SQLITE_VER)
