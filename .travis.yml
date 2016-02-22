@@ -1,7 +1,6 @@
 language: c++
 
 script:
-  - make sqlite
   - make svn
   - make boost
   - make boto
