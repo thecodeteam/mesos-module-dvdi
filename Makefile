@@ -148,7 +148,7 @@ USE_U1204_CACHED_DEP = $(shell if [ "$(U1204)" != "" -a -e "$(DEPS_7ZS_DIR)/$(1)
 ########################################################################
 ##                            Subversion                              ##
 ########################################################################
-SVN_VER := 1.9.2
+SVN_VER := 1.9.3
 SVN_SRC_TAR := subversion-$(SVN_VER).tar.bz2
 SVN_SRC_URL := http://apache.mirrors.tds.net/subversion
 SVN_OPT_7Z := subversion-$(SVN_VER).7z
@@ -159,7 +159,7 @@ SVN_MAKEFILE := $(SVN_SRC_DIR)/Makefile
 SVN_SRC_BIN := $(SVN_SRC_DIR)/subversion/svn/svn
 SVN := $(SVN_OPT_DIR)/bin/svn
 
-SQLITE_VER := 3071501
+SQLITE_VER := 3110000
 SQLITE_SRC_ZIP := sqlite-amalgamation-$(SQLITE_VER).zip
 SQLITE_SRC_URL := http://www.sqlite.org
 SQLITE_SRC_ZIP_DIR := $(SVN_SRC_DIR)/sqlite-amalgamation-$(SQLITE_VER)
