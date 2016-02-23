@@ -52,7 +52,7 @@ WORKDIR /mesos
 
 # Clone Mesos (master branch)
 RUN git clone https://github.com/apache/mesos.git /mesos
-RUN git checkout c29b3b6801846cda270aab17a670542ec5d238f5
+RUN git checkout 864fe8eabd4a83b78ce9140c501908ee3cb90beb
 RUN git log -n 1
 
 # Bootstrap
