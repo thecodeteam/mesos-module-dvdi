@@ -77,7 +77,7 @@ else
   fi
 
   if test -d "$mesos_build_dir"; then
-    MESOS_INCLUDE_PATH="${MESOS_INCLUDE_PATH} -I${mesos_build_dir}/include"
+    MESOS_INCLUDE_PATH="${MESOS_INCLUDE_PATH} -I${mesos_build_dir}/include -I${mesos_build_dir}/3rdparty/libprocess/3rdparty/picojson-1.3.0"
     if test -n "`echo $with_protobuf`"; then
       PROTOC_PATH="${with_protobuf}/bin"
       MESOS_INCLUDE_PATH="${MESOS_INCLUDE_PATH} -I${with_protobuf}/include"
@@ -198,9 +198,16 @@ AC_CHECK_HEADER([glog/logging.h],
                     [AC_MSG_ERROR([glog is not installed.])])],
                 [AC_MSG_ERROR([cannot find glog header.])])
 
+old_CPPFLAGS=${CPPFLAGS}
+# mesos 0.27.0 installs picojson.h, so we'll include MESOS_CPPFLAGS
+# to make sure we check ${prefix}/include.
+if test "$MESOS_VERSION_INT" -ge 0270; then
+  CPPFLAGS="${CPPFLAGS} ${MESOS_CPPFLAGS}"
+fi
 AC_CHECK_HEADER([picojson.h],
                 [],
                 [AC_MSG_ERROR([picojson is not installed.])])
+CPPFLAGS=${old_CPPFLAGS}
 
 AC_CHECK_HEADERS([boost/lexical_cast.hpp boost/functional/hash.hpp],
                 [],
