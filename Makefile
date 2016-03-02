@@ -1,11 +1,11 @@
 # MESOS_VERSIONS is a list of space, separated versions of mesos that
 # will be built.
-MESOS_VERSIONS := 0.23.1 0.24.1 0.25.0 0.26.0 0.27.0
+MESOS_VERSIONS := 0.23.1 0.24.1 0.25.0 0.26.0 0.27.1
 
 # ISO_VERSIONS is either equal to or a subset of the MESOS_VERSIONS
 # list. The versions in this list are the versions of Mesos against
 # which to build the isolator module.
-ISO_VERSIONS := 0.23.1 0.24.1 0.25.0 0.26.0 0.27.0
+ISO_VERSIONS := 0.23.1 0.24.1 0.25.0 0.26.0 0.27.1
 
 ########################################################################
 ##                             MAKEFLAGS                              ##
@@ -148,7 +148,7 @@ USE_U1204_CACHED_DEP = $(shell if [ "$(U1204)" != "" -a -e "$(DEPS_7ZS_DIR)/$(1)
 ########################################################################
 ##                            Subversion                              ##
 ########################################################################
-SVN_VER := 1.9.2
+SVN_VER := 1.9.3
 SVN_SRC_TAR := subversion-$(SVN_VER).tar.bz2
 SVN_SRC_URL := http://apache.mirrors.tds.net/subversion
 SVN_OPT_7Z := subversion-$(SVN_VER).7z
@@ -601,6 +601,8 @@ $$(MESOS_MAKEFILE_$1): PYTHONPATH=$$(BOTO_OPT_DIR)
 $$(MESOS_MAKEFILE_$1): $$(MESOS_CONFIGURE_$1) $$(MESOS_DEPS)
 	mkdir -p $$(@D) && \
 		cd $$(@D) && \
+		mkdir -p $$(MESOS_OPT_DIR_$1) && \
+		cp -r $(SVN_OPT_DIR)\* $$(MESOS_OPT_DIR_$1) && \
 		env CXXFLAGS="$$(CXXFLAGS)" \
 				CPPFLAGS="$$(CXXFLAGS)" \
 				PYTHONPATH="$$(PYTHONPATH):$$$$PYTHONPATH" \
@@ -773,6 +775,8 @@ ISO_SRC_LIB_$1 := $$(ISO_LIBDIR_$1)/libmesos_dvdi_isolator-$$(ISO_VER_$1).so
 
 isolator-$1-src: $$(ISO_BOOTSTRAP_$1)
 $$(ISO_BOOTSTRAP_$1): $$(ISO_BOOTSTRAP) $$(ISO_SRCS)
+	mkdir -p $$(MESOS_OPT_DIR_$1) && \
+	cp -r $(SVN_OPT_DIR)/* $$(MESOS_OPT_DIR_$1) && \
 	mkdir -p $$(@D) && \
 	for F in "$$$$(git ls-tree --name-only HEAD isolator/)"; do \
 		cp -fr $$$$F $$(@D); \
