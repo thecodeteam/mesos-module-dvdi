@@ -43,8 +43,8 @@ namespace mesos {
 namespace slave {
 
 static constexpr char REXRAY_MOUNT_PREFIX[]       = "/var/lib/rexray/volumes/";
-static constexpr char DVDCLI_MOUNT_CMD[]          = "/usr/bin/dvdcli mount";
-static constexpr char DVDCLI_UNMOUNT_CMD[]        = "/usr/bin/dvdcli unmount";
+static constexpr char DVDCLI_MOUNT_CMD[]          = "mount";
+static constexpr char DVDCLI_UNMOUNT_CMD[]        = "unmount";
 
 static constexpr char VOL_NAME_CMD_OPTION[]       = "--volumename=";
 static constexpr char VOL_DRIVER_CMD_OPTION[]     = "--volumedriver=";
@@ -59,6 +59,9 @@ static constexpr char VOL_CPATH_ENV_VAR_NAME[]    = "DVDI_VOLUME_CONTAINERPATH";
 static constexpr char DVDI_MOUNTLIST_FILENAME[]   = "dvdimounts.pb";
 static constexpr char DVDI_WORKDIR_PARAM_NAME[]   = "work_dir";
 static constexpr char DEFAULT_WORKING_DIR[]       = "/tmp/mesos";
+
+static constexpr char DVDCLI_BIN_PARAM_NAME[]     = "dvdcli";
+static constexpr char DEFAULT_DVDCLI_BIN[]        = "/usr/bin/dvdcli";
 
 #if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 0240
 class DockerVolumeDriverIsolator: public mesos::slave::IsolatorProcess
@@ -217,6 +220,7 @@ private:
 
   static std::string mountPbFilename;
   static std::string mesosWorkingDir;
+  static std::string dvdcliBin;
 };
 
 } /* namespace slave */

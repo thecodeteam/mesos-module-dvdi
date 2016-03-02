@@ -77,6 +77,7 @@ const char DockerVolumeDriverIsolator::prohibitedchars[NUM_PROHIBITED]  =
 
 string DockerVolumeDriverIsolator::mountPbFilename;
 string DockerVolumeDriverIsolator::mesosWorkingDir;
+string DockerVolumeDriverIsolator::dvdcliBin;
 
 
 DockerVolumeDriverIsolator::DockerVolumeDriverIsolator(
@@ -103,6 +104,7 @@ Try<Isolator*> DockerVolumeDriverIsolator::create(
 
   LOG(INFO) << "DockerVolumeDriverIsolator::create() called";
   mesosWorkingDir = DEFAULT_WORKING_DIR;
+  dvdcliBin = DEFAULT_DVDCLI_BIN;
 
   foreach (const Parameter& parameter, parameters.parameter()) {
     if (parameter.key() == DVDI_WORKDIR_PARAM_NAME) {
@@ -114,6 +116,19 @@ Try<Isolator*> DockerVolumeDriverIsolator::create(
       } else {
         std::stringstream ss;
         ss << "DockerVolumeDriverIsolator " << DVDI_WORKDIR_PARAM_NAME
+           << " parameter is invalid, must start with /";
+        return Error(ss.str());
+      }
+    }
+    else if (parameter.key() == DVDCLI_BIN_PARAM_NAME) {
+      LOG(INFO) << "parameter " << parameter.key() << ":" << parameter.value();
+
+      if (parameter.value().length() > 1 &&
+          strings::startsWith(parameter.value(), "/")) {
+        dvdcliBin = parameter.value();
+      } else {
+        std::stringstream ss;
+        ss << "DockerVolumeDriverIsolator " << DVDCLI_BIN_PARAM_NAME
            << " parameter is invalid, must start with /";
         return Error(ss.str());
       }
@@ -344,20 +359,22 @@ bool DockerVolumeDriverIsolator::unmount(
 
   if (system(NULL)) { // Is a command processor available?
 
-    LOG(INFO) << "Invoking " << DVDCLI_UNMOUNT_CMD << " "
+    LOG(INFO) << "Invoking " << dvdcliBin << " " << DVDCLI_UNMOUNT_CMD << " "
               << VOL_DRIVER_CMD_OPTION << em.volumedriver() << " "
               << VOL_NAME_CMD_OPTION << em.volumename();
 
 #if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 0240
     std::ostringstream cmdOut;
-    Try<int> retcode = os::shell(&cmdOut, "%s %s%s %s%s",
+    Try<int> retcode = os::shell(&cmdOut, "%s %s %s%s %s%s",
+      dvdcliBin.c_str(),
       DVDCLI_UNMOUNT_CMD,
       VOL_DRIVER_CMD_OPTION,
       em.volumedriver().c_str(),
       VOL_NAME_CMD_OPTION,
       em.volumename().c_str());
 #else
-    Try<string> retcode = os::shell("%s %s%s %s%s ",
+    Try<string> retcode = os::shell("%s %s %s%s %s%s ",
+      dvdcliBin.c_str(),
       DVDCLI_UNMOUNT_CMD,
       VOL_DRIVER_CMD_OPTION,
       em.volumedriver().c_str(),
@@ -366,17 +383,18 @@ bool DockerVolumeDriverIsolator::unmount(
 #endif
 
     if (retcode.isError()) {
-      LOG(WARNING) << DVDCLI_UNMOUNT_CMD << " failed to execute on "
-                   << callerLabelForLogging
+      LOG(WARNING) << dvdcliBin << " " << DVDCLI_UNMOUNT_CMD
+                   << " failed to execute on " << callerLabelForLogging
                    << ", continuing on the assumption this volume was "
                    << "manually unmounted previously "
                    << retcode.error();
     } else {
 #if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 0240
-      LOG(INFO) << DVDCLI_UNMOUNT_CMD << " returned " << retcode.get() << ", "
-                << cmdOut.str();
+      LOG(INFO) << dvdcliBin << " " << DVDCLI_UNMOUNT_CMD << " returned "
+                << retcode.get() << ", " << cmdOut.str();
 #else
-      LOG(INFO) << DVDCLI_UNMOUNT_CMD << " returned " << retcode.get();
+      LOG(INFO) << dvdcliBin << " " << DVDCLI_UNMOUNT_CMD << " returned "
+                << retcode.get();
 #endif
     }
   } else {
@@ -403,14 +421,15 @@ string DockerVolumeDriverIsolator::mount(
   string mountpoint; // Return value init'd to empty.
 
   if (system(NULL)) { // Is a command processor available?
-    LOG(INFO) << "Invoking " << DVDCLI_MOUNT_CMD << " "
+    LOG(INFO) << "Invoking " << dvdcliBin << " " << DVDCLI_MOUNT_CMD << " "
               << VOL_DRIVER_CMD_OPTION << em.volumedriver() << " "
               << VOL_NAME_CMD_OPTION << em.volumename() << " "
               << em.options();
 
 #if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 0240
     std::ostringstream cmdOut;
-    Try<int> retcode = os::shell(&cmdOut, "%s %s%s %s%s %s",
+    Try<int> retcode = os::shell(&cmdOut, "%s %s %s%s %s%s %s",
+      dvdcliBin.c_str(),
       DVDCLI_MOUNT_CMD,
       VOL_DRIVER_CMD_OPTION,
       em.volumedriver().c_str(),
@@ -418,7 +437,8 @@ string DockerVolumeDriverIsolator::mount(
       em.volumename().c_str(),
       em.options().c_str());
 #else
-    Try<string> retcode = os::shell("%s %s%s %s%s %s",
+    Try<string> retcode = os::shell("%s %s %s%s %s%s %s",
+      dvdcliBin.c_str(),
       DVDCLI_MOUNT_CMD,
       VOL_DRIVER_CMD_OPTION,
       em.volumedriver().c_str(),
@@ -428,30 +448,30 @@ string DockerVolumeDriverIsolator::mount(
 #endif
 
     if (retcode.isError()) {
-      LOG(ERROR) << DVDCLI_MOUNT_CMD << " failed to execute on "
-                 << callerLabelForLogging
+      LOG(ERROR) << dvdcliBin << " " << DVDCLI_MOUNT_CMD
+                 << " failed to execute on " << callerLabelForLogging
                  << retcode.error();
     } else {
 #if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 0240
       if (retcode.get() != 0) {
-        LOG(ERROR) << DVDCLI_MOUNT_CMD << " returned errorcode "
-                   << retcode.get();
+        LOG(ERROR) << dvdcliBin << " " << DVDCLI_MOUNT_CMD
+                   << " returned errorcode " << retcode.get();
       } else if (strings::trim(cmdOut.str()).empty()) {
-        LOG(ERROR) << DVDCLI_MOUNT_CMD
+        LOG(ERROR) << dvdcliBin << " " << DVDCLI_MOUNT_CMD
                    << " returned an empty mountpoint name";
       } else {
         mountpoint = strings::trim(cmdOut.str());
-        LOG(INFO) << DVDCLI_MOUNT_CMD << " returned mountpoint:"
-                  << mountpoint;
+        LOG(INFO) << dvdcliBin << " " << DVDCLI_MOUNT_CMD
+                  << " returned mountpoint:" << mountpoint;
       }
 #else
       if (strings::trim(retcode.get()).empty()) {
-        LOG(ERROR) << DVDCLI_MOUNT_CMD
+        LOG(ERROR) << dvdcliBin << " " << DVDCLI_MOUNT_CMD
                    << " returned an empty mountpoint name";
       } else {
         mountpoint = strings::trim(retcode.get());
-        LOG(INFO) << DVDCLI_MOUNT_CMD << " returned mountpoint:"
-                  << mountpoint;
+        LOG(INFO) << dvdcliBin << " " << DVDCLI_MOUNT_CMD
+                  << " returned mountpoint:" << mountpoint;
       }
 #endif
     }
