@@ -776,7 +776,7 @@ ISO_SRC_LIB_$1 := $$(ISO_LIBDIR_$1)/libmesos_dvdi_isolator-$$(ISO_VER_$1).so
 isolator-$1-src: $$(ISO_BOOTSTRAP_$1)
 $$(ISO_BOOTSTRAP_$1): $$(ISO_BOOTSTRAP) $$(ISO_SRCS)
 	mkdir -p $$(MESOS_OPT_DIR_$1) && \
-	cp -r $(SVN_OPT_DIR)\* $$(MESOS_OPT_DIR_$1) && \
+	cp -r $(SVN_OPT_DIR)/* $$(MESOS_OPT_DIR_$1) && \
 	mkdir -p $$(@D) && \
 	for F in "$$$$(git ls-tree --name-only HEAD isolator/)"; do \
 		cp -fr $$$$F $$(@D); \
