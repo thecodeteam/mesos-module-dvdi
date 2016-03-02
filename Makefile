@@ -625,8 +625,6 @@ mesos-$1: $$(MESOS_$1)
 ifeq ($$(call USE_U1204_CACHED_DEP,$$(MESOS_OPT_7Z_$1)),true)
 $$(MESOS_$1): $$(MESOS_DEPS)
 	cd $$(DEPS_DIR) && \
-		mkdir -p $$(MESOS_OPT_DIR_$1) && \
-		cp -r $(SVN_OPT_DIR)\* $$(MESOS_OPT_DIR_$1) && \
 		7z x $$(DEPS_7ZS_DIR)/$$(MESOS_OPT_7Z_$1) > /dev/null
 else
 ifeq ($$(call USE_U1204_DEP,$$(MESOS_OPT_7Z_$1)),true)
@@ -635,8 +633,6 @@ $$(MESOS_$1): $$(MESOS_DEPS)
 		cd $$(DEPS_7ZS_DIR) && \
 		curl -SLO $$(DEPS_URL)/$$(MESOS_OPT_7Z_$1) && \
 		cd $$(DEPS_DIR) && \
-		mkdir -p $$(MESOS_OPT_DIR_$1) && \
-		cp -r $(SVN_OPT_DIR)\* $$(MESOS_OPT_DIR_$1) && \
 		7z x $$(DEPS_7ZS_DIR)/$$(MESOS_OPT_7Z_$1) > /dev/null
 else
 $$(MESOS_$1): MAKEFLAGS=$$(MESOS_MAKEFLAGS)
@@ -779,6 +775,8 @@ ISO_SRC_LIB_$1 := $$(ISO_LIBDIR_$1)/libmesos_dvdi_isolator-$$(ISO_VER_$1).so
 
 isolator-$1-src: $$(ISO_BOOTSTRAP_$1)
 $$(ISO_BOOTSTRAP_$1): $$(ISO_BOOTSTRAP) $$(ISO_SRCS)
+	mkdir -p $$(MESOS_OPT_DIR_$1) && \
+	cp -r $(SVN_OPT_DIR)\* $$(MESOS_OPT_DIR_$1) && \
 	mkdir -p $$(@D) && \
 	for F in "$$$$(git ls-tree --name-only HEAD isolator/)"; do \
 		cp -fr $$$$F $$(@D); \
