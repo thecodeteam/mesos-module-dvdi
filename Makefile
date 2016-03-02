@@ -1,11 +1,11 @@
 # MESOS_VERSIONS is a list of space, separated versions of mesos that
 # will be built.
-MESOS_VERSIONS := 0.23.1 0.24.1 0.25.0 0.26.0 0.27.0
+MESOS_VERSIONS := 0.23.1 0.24.1 0.25.0 0.26.0 0.27.1
 
 # ISO_VERSIONS is either equal to or a subset of the MESOS_VERSIONS
 # list. The versions in this list are the versions of Mesos against
 # which to build the isolator module.
-ISO_VERSIONS := 0.23.1 0.24.1 0.25.0 0.26.0 0.27.0
+ISO_VERSIONS := 0.23.1 0.24.1 0.25.0 0.26.0 0.27.1
 
 ########################################################################
 ##                             MAKEFLAGS                              ##
@@ -601,6 +601,8 @@ $$(MESOS_MAKEFILE_$1): PYTHONPATH=$$(BOTO_OPT_DIR)
 $$(MESOS_MAKEFILE_$1): $$(MESOS_CONFIGURE_$1) $$(MESOS_DEPS)
 	mkdir -p $$(@D) && \
 		cd $$(@D) && \
+		mkdir -p $$(MESOS_OPT_DIR_$1) && \
+		cp -r $(SVN_OPT_DIR)\* $$(MESOS_OPT_DIR_$1) && \
 		env CXXFLAGS="$$(CXXFLAGS)" \
 				CPPFLAGS="$$(CXXFLAGS)" \
 				PYTHONPATH="$$(PYTHONPATH):$$$$PYTHONPATH" \
@@ -623,6 +625,8 @@ mesos-$1: $$(MESOS_$1)
 ifeq ($$(call USE_U1204_CACHED_DEP,$$(MESOS_OPT_7Z_$1)),true)
 $$(MESOS_$1): $$(MESOS_DEPS)
 	cd $$(DEPS_DIR) && \
+		mkdir -p $$(MESOS_OPT_DIR_$1) && \
+		cp -r $(SVN_OPT_DIR)\* $$(MESOS_OPT_DIR_$1) && \
 		7z x $$(DEPS_7ZS_DIR)/$$(MESOS_OPT_7Z_$1) > /dev/null
 else
 ifeq ($$(call USE_U1204_DEP,$$(MESOS_OPT_7Z_$1)),true)
@@ -631,6 +635,8 @@ $$(MESOS_$1): $$(MESOS_DEPS)
 		cd $$(DEPS_7ZS_DIR) && \
 		curl -SLO $$(DEPS_URL)/$$(MESOS_OPT_7Z_$1) && \
 		cd $$(DEPS_DIR) && \
+		mkdir -p $$(MESOS_OPT_DIR_$1) && \
+		cp -r $(SVN_OPT_DIR)\* $$(MESOS_OPT_DIR_$1) && \
 		7z x $$(DEPS_7ZS_DIR)/$$(MESOS_OPT_7Z_$1) > /dev/null
 else
 $$(MESOS_$1): MAKEFLAGS=$$(MESOS_MAKEFLAGS)
