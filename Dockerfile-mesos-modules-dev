@@ -1,4 +1,4 @@
-FROM ubuntu-upstart:14.04
+FROM ubuntu:14.04
 MAINTAINER Mesosphere <support@mesosphere.io>
 
 # Install Dependencies
@@ -12,7 +12,7 @@ RUN apt-get -qy install \
   build-essential                         \
   autoconf                                \
   automake                                \
-  cmake=3.2.2-2ubuntu2~ubuntu14.04.1~ppa1 \
+  cmake=3.2.2-2~ubuntu14.04.1~ppa1        \
   ca-certificates                         \
   gdb                                     \
   wget                                    \
@@ -49,7 +49,7 @@ WORKDIR /mesos
 
 # Clone Mesos (master branch)
 RUN git clone https://github.com/apache/mesos.git /mesos
-RUN git checkout 864fe8eabd4a83b78ce9140c501908ee3cb90beb
+RUN git checkout 961edbd82e691a619a4c171a7aadc9c32957fa73
 RUN git log -n 1
 
 # Bootstrap
