@@ -794,8 +794,7 @@ isolator-$1-configure: $$(ISO_MAKEFILE_$1)
 $$(ISO_MAKEFILE_$1): CXXFLAGS=-I$$(GLOG_OPT_DIR)/include \
 													-I$$(PICOJSON_OPT_DIR)/include \
 													-I$$(BOOST_OPT_DIR) \
-													-I$$(PBUF_OPT_DIR)/include \
-													-DMESOS_VERSION_INT=$$(subst .,,$1)
+													-I$$(PBUF_OPT_DIR)/include
 $$(ISO_MAKEFILE_$1): $$(ISO_CONFIGURE_$1) $$(ISO_DEPS_$1)
 	mkdir -p $$(@D) && cd $$(@D) && \
 		env CXXFLAGS="$$(CXXFLAGS)" \
