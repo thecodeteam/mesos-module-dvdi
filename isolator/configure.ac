@@ -181,7 +181,7 @@ if test -z "$MESOS_VERSION_INT"; then
   else
     MESOS_VERSION_FILE="$mesos_build_dir/include/mesos/version.hpp"
   fi
-  MESOS_VERSION_INT=`grep -e '#define MESOS_VERSION ' $MESOS_VERSION_FILE | awk '{print $3}' | tr -d .\"`
+  MESOS_VERSION_INT=`grep -e '#define MESOS_VERSION ' $MESOS_VERSION_FILE | awk '{print $3}' | tr -d .\" | awk '{x=$0+0;print x}'`
   CFLAGS="$CFLAGS -DMESOS_VERSION_INT=$MESOS_VERSION_INT"
   CXXFLAGS="$CXXFLAGS -DMESOS_VERSION_INT=$MESOS_VERSION_INT"
 fi
