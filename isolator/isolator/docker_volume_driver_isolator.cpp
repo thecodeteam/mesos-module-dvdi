@@ -563,8 +563,10 @@ Future<Option<ContainerLaunchInfo>> DockerVolumeDriverIsolator::prepare(
     return Failure("Container has already been prepared");
   }
 
-#if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT >= 270
+#if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT >= 280
   const ExecutorInfo& executorInfo = containerConfig.executor_info();
+#elif MESOS_VERSION_INT != 0 && MESOS_VERSION_INT >= 270
+  const ExecutorInfo& executorInfo = containerConfig.executorinfo();
 #endif
 
   // Get things we need from task's environment in ExecutoInfo.
