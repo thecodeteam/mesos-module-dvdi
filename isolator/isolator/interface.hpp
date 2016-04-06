@@ -72,7 +72,7 @@ public:
     mount->set_volumedriver(volumeDriver);
     mount->set_volumename(volumeName);
     mount->set_mountpoint(mountPoint);
-    mount->set_options(mountPoint);
+    mount->set_options(options);
     mount->set_container_path(containerPath);
 
     //TODO revisit this later
