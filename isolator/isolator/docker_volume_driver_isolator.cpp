@@ -46,6 +46,7 @@ using namespace process;
 
 using std::list;
 using std::string;
+using std::stringstream;
 using std::array;
 
 using namespace mesos;
@@ -388,6 +389,24 @@ bool DockerVolumeDriverIsolator::unmount(
   return true;
 }
 
+string formatOptions(const string& options)
+{
+  std::stringstream buf;
+  std::size_t i = 0, j = options.find(",");
+
+  while (j != std::string::npos) {
+    if (j > i) {
+      buf << " " << VOL_OPTS_CMD_OPTION << options.substr(i, j-i);
+    }
+    i = j+1;
+    j = options.find(",", i);
+  }
+  if (i < options.size()) {
+      buf << " " << VOL_OPTS_CMD_OPTION << options.substr(i);
+  }
+  return buf.str();
+}
+
 // Attempts to mount specified external mount,
 // returns non-empty string (mountpoint) on success.
 string DockerVolumeDriverIsolator::mount(
@@ -401,12 +420,13 @@ string DockerVolumeDriverIsolator::mount(
   const string volumeDriver = em.volumedriver();
   const string volumeName = em.volumename();
   string mountpoint; // Return value init'd to empty.
+  const string options = formatOptions(em.options());
 
   if (system(NULL)) { // Is a command processor available?
     LOG(INFO) << "Invoking " << DVDCLI_MOUNT_CMD << " "
               << VOL_DRIVER_CMD_OPTION << em.volumedriver() << " "
               << VOL_NAME_CMD_OPTION << em.volumename() << " "
-              << em.options();
+              << options;
 
 #if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 240
     std::ostringstream cmdOut;
@@ -416,7 +436,7 @@ string DockerVolumeDriverIsolator::mount(
       em.volumedriver().c_str(),
       VOL_NAME_CMD_OPTION,
       em.volumename().c_str(),
-      em.options().c_str());
+      options.c_str());
 #else
     Try<string> retcode = os::shell("%s %s%s %s%s %s",
       DVDCLI_MOUNT_CMD,
@@ -424,7 +444,7 @@ string DockerVolumeDriverIsolator::mount(
       em.volumedriver().c_str(),
       VOL_NAME_CMD_OPTION,
       em.volumename().c_str(),
-      em.options().c_str());
+      options.c_str());
 #endif
 
     if (retcode.isError()) {
