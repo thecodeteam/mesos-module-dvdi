@@ -12,10 +12,14 @@ message ExternalMount {
   // This is chosen by the volume driver at run time and not configurable.
   optional string mountpoint = 4;
 
+  //mount options... filesystem type (ext4), etc
   optional string options = 5;
 
   // Absolute path pointing to a directory or file in the container.
   optional string container_path = 6;
+
+  //the fully qualified path to the dvdcli binary path
+  optional string dvdcli_path = 7;
 }
 
 // Our address book file is just one of these.
