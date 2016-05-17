@@ -14,9 +14,9 @@ private:
   std::string volumeDriver;
   std::string volumeName;
   std::string mountPoint;
-  //hashmap<std::string, std::string> opts; //TODO revisit this later
   std::string options;
   std::string containerPath;
+  std::string dvdcliPath;
 
 public:
   // create Builder with default values assigned
@@ -45,23 +45,19 @@ public:
     this->mountPoint = mountPoint;
     return *this;
   }
-  //TODO revisit this later
-  /*
-  Builder& addOption( const std::string key, const std::string value )
-  {
-    this->opts.put( key, value );
-    return *this;
-  }
-  */
   Builder& setOptions( const std::string options )
   {
     this->options = options;
     return *this;
   }
-
   Builder& setContainerPath( const std::string _containerPath )
   {
     this->containerPath = _containerPath;
+    return *this;
+  }
+  Builder& setDvdcliPath( const std::string _dvdcliPath )
+  {
+    this->dvdcliPath = _dvdcliPath;
     return *this;
   }
 
@@ -74,17 +70,7 @@ public:
     mount->set_mountpoint(mountPoint);
     mount->set_options(options);
     mount->set_container_path(containerPath);
-
-    //TODO revisit this later
-    /*
-    for (const auto &opt : opts)
-    {
-      ExternalMount_ExternalMountOption* newopt = mount->add_option();
-      newopt->set_key(opt.first);
-      newopt->set_key(opt.second);
-    }
-    */
-
+    mount->set_dvdcli_path(dvdcliPath);
     return mount;
   }
 };

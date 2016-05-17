@@ -79,7 +79,6 @@ const char DockerVolumeDriverIsolator::prohibitedchars[NUM_PROHIBITED]  =
 string DockerVolumeDriverIsolator::mountPbFilename;
 string DockerVolumeDriverIsolator::mesosWorkingDir;
 
-
 DockerVolumeDriverIsolator::DockerVolumeDriverIsolator(
   const Parameters& _parameters)
   : parameters(_parameters)
@@ -121,8 +120,7 @@ Try<Isolator*> DockerVolumeDriverIsolator::create(
     }
   }
 
-  mountPbFilename = path::join(getMetaRootDir(mesosWorkingDir),
-                                 DVDI_MOUNTLIST_FILENAME);
+  mountPbFilename = path::join(DVDI_MOUNTLIST_PATH, DVDI_MOUNTLIST_FILENAME);
   LOG(INFO) << "using " << mountPbFilename;
 
 #if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 240
@@ -343,22 +341,31 @@ bool DockerVolumeDriverIsolator::unmount(
             << " is being unmounted on "
             << callerLabelForLogging;
 
+  if (!os::exists(em.dvdcli_path())) {
+    LOG(ERROR) << "The DVDCLI binary doesn't exist at the specified path "
+               << em.dvdcli_path();
+    return false;
+  }
+
   if (system(NULL)) { // Is a command processor available?
 
-    LOG(INFO) << "Invoking " << DVDCLI_UNMOUNT_CMD << " "
+    LOG(INFO) << "Invoking " << em.dvdcli_path()
+              << " " << DVDCLI_UNMOUNT_CMD << " "
               << VOL_DRIVER_CMD_OPTION << em.volumedriver() << " "
               << VOL_NAME_CMD_OPTION << em.volumename();
 
 #if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 240
     std::ostringstream cmdOut;
-    Try<int> retcode = os::shell(&cmdOut, "%s %s%s %s%s",
+    Try<int> retcode = os::shell(&cmdOut, "%s %s %s%s %s%s",
+      em.dvdcli_path().c_str(),
       DVDCLI_UNMOUNT_CMD,
       VOL_DRIVER_CMD_OPTION,
       em.volumedriver().c_str(),
       VOL_NAME_CMD_OPTION,
       em.volumename().c_str());
 #else
-    Try<string> retcode = os::shell("%s %s%s %s%s ",
+    Try<string> retcode = os::shell("%s %s %s%s %s%s ",
+      em.dvdcli_path().c_str(),
       DVDCLI_UNMOUNT_CMD,
       VOL_DRIVER_CMD_OPTION,
       em.volumedriver().c_str(),
@@ -367,17 +374,18 @@ bool DockerVolumeDriverIsolator::unmount(
 #endif
 
     if (retcode.isError()) {
-      LOG(WARNING) << DVDCLI_UNMOUNT_CMD << " failed to execute on "
-                   << callerLabelForLogging
+      LOG(WARNING) << em.dvdcli_path() << " " << DVDCLI_UNMOUNT_CMD
+                   << " failed to execute on " << callerLabelForLogging
                    << ", continuing on the assumption this volume was "
                    << "manually unmounted previously "
                    << retcode.error();
     } else {
 #if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 240
-      LOG(INFO) << DVDCLI_UNMOUNT_CMD << " returned " << retcode.get() << ", "
-                << cmdOut.str();
+      LOG(INFO) << em.dvdcli_path() << " " << DVDCLI_UNMOUNT_CMD
+        << " returned " << retcode.get() << ", " << cmdOut.str();
 #else
-      LOG(INFO) << DVDCLI_UNMOUNT_CMD << " returned " << retcode.get();
+      LOG(INFO) << em.dvdcli_path() << " " << DVDCLI_UNMOUNT_CMD
+        << " returned " << retcode.get();
 #endif
     }
   } else {
@@ -417,20 +425,26 @@ string DockerVolumeDriverIsolator::mount(
             << " is being mounted on "
             << callerLabelForLogging;
 
-  const string volumeDriver = em.volumedriver();
-  const string volumeName = em.volumename();
+  if (!os::exists(em.dvdcli_path())) {
+    LOG(ERROR) << "The DVDCLI binary doesn't exist at the specified path "
+               << em.dvdcli_path();
+    return false;
+  }
+
   string mountpoint; // Return value init'd to empty.
   const string options = formatOptions(em.options());
 
   if (system(NULL)) { // Is a command processor available?
-    LOG(INFO) << "Invoking " << DVDCLI_MOUNT_CMD << " "
+    LOG(INFO) << "Invoking " << em.dvdcli_path()
+              << " " << DVDCLI_MOUNT_CMD << " "
               << VOL_DRIVER_CMD_OPTION << em.volumedriver() << " "
               << VOL_NAME_CMD_OPTION << em.volumename() << " "
               << options;
 
 #if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 240
     std::ostringstream cmdOut;
-    Try<int> retcode = os::shell(&cmdOut, "%s %s%s %s%s %s",
+    Try<int> retcode = os::shell(&cmdOut, "%s %s %s%s %s%s %s",
+      em.dvdcli_path().c_str(),
       DVDCLI_MOUNT_CMD,
       VOL_DRIVER_CMD_OPTION,
       em.volumedriver().c_str(),
@@ -438,7 +452,8 @@ string DockerVolumeDriverIsolator::mount(
       em.volumename().c_str(),
       options.c_str());
 #else
-    Try<string> retcode = os::shell("%s %s%s %s%s %s",
+    Try<string> retcode = os::shell("%s %s %s%s %s%s %s",
+      em.dvdcli_path().c_str(),
       DVDCLI_MOUNT_CMD,
       VOL_DRIVER_CMD_OPTION,
       em.volumedriver().c_str(),
@@ -448,30 +463,30 @@ string DockerVolumeDriverIsolator::mount(
 #endif
 
     if (retcode.isError()) {
-      LOG(ERROR) << DVDCLI_MOUNT_CMD << " failed to execute on "
-                 << callerLabelForLogging
+      LOG(ERROR) << em.dvdcli_path()<< " " << DVDCLI_MOUNT_CMD
+                 << " failed to execute on " << callerLabelForLogging
                  << retcode.error();
     } else {
 #if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 240
       if (retcode.get() != 0) {
-        LOG(ERROR) << DVDCLI_MOUNT_CMD << " returned errorcode "
-                   << retcode.get();
+        LOG(ERROR) << em.dvdcli_path() << " " << DVDCLI_MOUNT_CMD
+                   << " returned errorcode " << retcode.get();
       } else if (strings::trim(cmdOut.str()).empty()) {
-        LOG(ERROR) << DVDCLI_MOUNT_CMD
+        LOG(ERROR) << em.dvdcli_path() << " " << DVDCLI_MOUNT_CMD
                    << " returned an empty mountpoint name";
       } else {
         mountpoint = strings::trim(cmdOut.str());
-        LOG(INFO) << DVDCLI_MOUNT_CMD << " returned mountpoint:"
-                  << mountpoint;
+        LOG(INFO) << em.dvdcli_path() << " " << DVDCLI_MOUNT_CMD
+                  << " returned mountpoint:" << mountpoint;
       }
 #else
       if (strings::trim(retcode.get()).empty()) {
-        LOG(ERROR) << DVDCLI_MOUNT_CMD
+        LOG(ERROR) << em.dvdcli_path() << " " << DVDCLI_MOUNT_CMD
                    << " returned an empty mountpoint name";
       } else {
         mountpoint = strings::trim(retcode.get());
-        LOG(INFO) << DVDCLI_MOUNT_CMD << " returned mountpoint:"
-                  << mountpoint;
+        LOG(INFO) << em.dvdcli_path() << " " << DVDCLI_MOUNT_CMD
+                  << " returned mountpoint:" << mountpoint;
       }
 #endif
     }
@@ -525,7 +540,6 @@ bool DockerVolumeDriverIsolator::parseEnvVar(
             << envvar.value() << ") parsed from environment";
   return true;
 }
-
 
 Failure DockerVolumeDriverIsolator::revertMountlist(
     const char*                                      operation,
@@ -619,6 +633,7 @@ Future<Option<ContainerLaunchInfo>> DockerVolumeDriverIsolator::prepare(
   envvararray volumeNames;
   envvararray mountOptions;
   envvararray containerPaths;
+  envvararray dvdcliPaths;
 
   // Iterate through the environment variables,
   // looking for the ones we need.
@@ -627,7 +642,7 @@ Future<Option<ContainerLaunchInfo>> DockerVolumeDriverIsolator::prepare(
 
     if (strings::startsWith(variable.name(), VOL_NAME_ENV_VAR_NAME)) {
       if (!parseEnvVar(variable, VOL_NAME_ENV_VAR_NAME, volumeNames, true)) {
-        return Failure("prepare() failed due to illegal environment variable");
+        return Failure("prepare() failed due to illegal VOL_NAME_ENV_VAR_NAME");
       }
     } else if (strings::startsWith(variable.name(), VOL_DRIVER_ENV_VAR_NAME)) {
       if (!parseEnvVar(
@@ -635,11 +650,11 @@ Future<Option<ContainerLaunchInfo>> DockerVolumeDriverIsolator::prepare(
           VOL_DRIVER_ENV_VAR_NAME,
           deviceDriverNames,
           true)) {
-        return Failure("prepare() failed due to illegal environment variable");
+        return Failure("prepare() failed due to illegal VOL_DRIVER_ENV_VAR_NAME");
       }
     } else if (strings::startsWith(variable.name(), VOL_OPTS_ENV_VAR_NAME)) {
       if (!parseEnvVar(variable, VOL_OPTS_ENV_VAR_NAME, mountOptions, true)) {
-        return Failure("prepare() failed due to illegal environment variable");
+        return Failure("prepare() failed due to illegal VOL_OPTS_ENV_VAR_NAME");
       }
     } else if (strings::startsWith(variable.name(), VOL_CPATH_ENV_VAR_NAME)) {
       if (!parseEnvVar(
@@ -647,7 +662,11 @@ Future<Option<ContainerLaunchInfo>> DockerVolumeDriverIsolator::prepare(
           VOL_CPATH_ENV_VAR_NAME,
           containerPaths,
           false)) {
-        return Failure("prepare() failed due to illegal environment variable");
+        return Failure("prepare() failed due to illegal VOL_CPATH_ENV_VAR_NAME");
+      }
+    } else if (strings::startsWith(variable.name(), VOL_DVDCLI_ENV_VAR_NAME)) {
+      if (!parseEnvVar(variable, VOL_DVDCLI_ENV_VAR_NAME, dvdcliPaths, false)) {
+        return Failure("prepare() failed due to illegal VOL_DVDCLI_ENV_VAR_NAME");
       }
     }
   }
@@ -675,6 +694,9 @@ Future<Option<ContainerLaunchInfo>> DockerVolumeDriverIsolator::prepare(
     if (deviceDriverNames[i].empty()) {
       deviceDriverNames[i] = VOL_DRIVER_DEFAULT;
     }
+    if (dvdcliPaths[i].empty()) {
+      dvdcliPaths[i] = DEFAULT_DVDCLI_BIN;
+    }
 
     // TODO consider not filling container path if it is empty.
     // Empty container path would mean leaving do not engage isolation on mount
@@ -697,6 +719,7 @@ Future<Option<ContainerLaunchInfo>> DockerVolumeDriverIsolator::prepare(
                .setVolumeName(volumeNames[i])
                .setOptions(mountOptions[i])
                .setContainerPath(containerPaths[i])
+               .setDvdcliPath(dvdcliPaths[i])
                .build()
       );
 

@@ -42,9 +42,10 @@ using namespace emccode::isolator::mount;
 namespace mesos {
 namespace slave {
 
+static constexpr char DVDI_MOUNTLIST_PATH[]       = "/var/run/mesos/isolators/mesos-module-dvdi/";
 static constexpr char REXRAY_MOUNT_PREFIX[]       = "/var/lib/rexray/volumes/";
-static constexpr char DVDCLI_MOUNT_CMD[]          = "/usr/bin/dvdcli mount";
-static constexpr char DVDCLI_UNMOUNT_CMD[]        = "/usr/bin/dvdcli unmount";
+static constexpr char DVDCLI_MOUNT_CMD[]          = "mount";
+static constexpr char DVDCLI_UNMOUNT_CMD[]        = "unmount";
 
 static constexpr char VOL_NAME_CMD_OPTION[]       = "--volumename=";
 static constexpr char VOL_DRIVER_CMD_OPTION[]     = "--volumedriver=";
@@ -55,10 +56,12 @@ static constexpr char VOL_NAME_ENV_VAR_NAME[]     = "DVDI_VOLUME_NAME";
 static constexpr char VOL_DRIVER_ENV_VAR_NAME[]   = "DVDI_VOLUME_DRIVER";
 static constexpr char VOL_OPTS_ENV_VAR_NAME[]     = "DVDI_VOLUME_OPTS";
 static constexpr char VOL_CPATH_ENV_VAR_NAME[]    = "DVDI_VOLUME_CONTAINERPATH";
+static constexpr char VOL_DVDCLI_ENV_VAR_NAME[]   = "DVDI_VOLUME_DVDCLI";
 
 static constexpr char DVDI_MOUNTLIST_FILENAME[]   = "dvdimounts.pb";
 static constexpr char DVDI_WORKDIR_PARAM_NAME[]   = "work_dir";
 static constexpr char DEFAULT_WORKING_DIR[]       = "/tmp/mesos";
+static constexpr char DEFAULT_DVDCLI_BIN[]        = "/usr/bin/dvdcli";
 
 #if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 240
 class DockerVolumeDriverIsolator: public mesos::slave::IsolatorProcess
