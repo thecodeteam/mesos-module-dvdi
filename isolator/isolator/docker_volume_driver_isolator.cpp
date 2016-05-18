@@ -120,8 +120,7 @@ Try<Isolator*> DockerVolumeDriverIsolator::create(
     }
   }
 
-  mountPbFilename = path::join(getMetaRootDir(mesosWorkingDir),
-                                 DVDI_MOUNTLIST_FILENAME);
+  mountPbFilename = path::join(DVDI_MOUNTLIST_PATH, DVDI_MOUNTLIST_FILENAME);
   LOG(INFO) << "using " << mountPbFilename;
 
 #if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 240
