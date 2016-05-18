@@ -42,6 +42,7 @@ using namespace emccode::isolator::mount;
 namespace mesos {
 namespace slave {
 
+static constexpr char DVDI_MOUNTLIST_PATH[]       = "/var/run/mesos/isolators/mesos-module-dvdi/";
 static constexpr char REXRAY_MOUNT_PREFIX[]       = "/var/lib/rexray/volumes/";
 static constexpr char DVDCLI_MOUNT_CMD[]          = "mount";
 static constexpr char DVDCLI_UNMOUNT_CMD[]        = "unmount";
