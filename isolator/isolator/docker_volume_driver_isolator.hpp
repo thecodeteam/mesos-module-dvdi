@@ -57,6 +57,7 @@ static constexpr char VOL_DRIVER_ENV_VAR_NAME[]   = "DVDI_VOLUME_DRIVER";
 static constexpr char VOL_OPTS_ENV_VAR_NAME[]     = "DVDI_VOLUME_OPTS";
 static constexpr char VOL_CPATH_ENV_VAR_NAME[]    = "DVDI_VOLUME_CONTAINERPATH";
 static constexpr char VOL_DVDCLI_ENV_VAR_NAME[]   = "DVDI_VOLUME_DVDCLI";
+static constexpr char VOL_EXPLICIT_ENV_VAR_NAME[]  = "DVDI_VOLUME_EXPLICITCREATE";
 
 static constexpr char DVDI_MOUNTLIST_FILENAME[]   = "dvdimounts.pb";
 static constexpr char DVDI_WORKDIR_PARAM_NAME[]   = "work_dir";

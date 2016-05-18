@@ -17,6 +17,7 @@ private:
   std::string options;
   std::string containerPath;
   std::string dvdcliPath;
+  bool        explicitCreate;
 
 public:
   // create Builder with default values assigned
@@ -60,6 +61,11 @@ public:
     this->dvdcliPath = _dvdcliPath;
     return *this;
   }
+  Builder& setExplicitCreate( const bool _explicitCreate )
+  {
+    this->explicitCreate = _explicitCreate;
+    return *this;
+  }
 
   ExternalMount* build()
   {
@@ -71,6 +77,7 @@ public:
     mount->set_options(options);
     mount->set_container_path(containerPath);
     mount->set_dvdcli_path(dvdcliPath);
+    mount->set_explicit_create(explicitCreate);
     return mount;
   }
 };
