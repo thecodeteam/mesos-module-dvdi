@@ -443,23 +443,25 @@ string DockerVolumeDriverIsolator::mount(
 
 #if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 240
     std::ostringstream cmdOut;
-    Try<int> retcode = os::shell(&cmdOut, "%s %s %s%s %s%s %s",
+    Try<int> retcode = os::shell(&cmdOut, "%s %s %s%s %s%s %s %s",
       em.dvdcli_path().c_str(),
       DVDCLI_MOUNT_CMD,
       VOL_DRIVER_CMD_OPTION,
       em.volumedriver().c_str(),
       VOL_NAME_CMD_OPTION,
       em.volumename().c_str(),
-      options.c_str());
+      options.c_str(),
+      (em.explicit_create() ? "--explicitCreate=true" : ""));
 #else
-    Try<string> retcode = os::shell("%s %s %s%s %s%s %s",
+    Try<string> retcode = os::shell("%s %s %s%s %s%s %s %s",
       em.dvdcli_path().c_str(),
       DVDCLI_MOUNT_CMD,
       VOL_DRIVER_CMD_OPTION,
       em.volumedriver().c_str(),
       VOL_NAME_CMD_OPTION,
       em.volumename().c_str(),
-      options.c_str());
+      options.c_str(),
+      (em.explicit_create() ? "--explicitCreate=true" : ""));
 #endif
 
     if (retcode.isError()) {
@@ -634,6 +636,7 @@ Future<Option<ContainerLaunchInfo>> DockerVolumeDriverIsolator::prepare(
   envvararray mountOptions;
   envvararray containerPaths;
   envvararray dvdcliPaths;
+  envvararray explicitCreates;
 
   // Iterate through the environment variables,
   // looking for the ones we need.
@@ -668,6 +671,10 @@ Future<Option<ContainerLaunchInfo>> DockerVolumeDriverIsolator::prepare(
       if (!parseEnvVar(variable, VOL_DVDCLI_ENV_VAR_NAME, dvdcliPaths, false)) {
         return Failure("prepare() failed due to illegal VOL_DVDCLI_ENV_VAR_NAME");
       }
+    } else if (strings::startsWith(variable.name(), VOL_EXPLICIT_ENV_VAR_NAME)) {
+      if (!parseEnvVar(variable, VOL_EXPLICIT_ENV_VAR_NAME, explicitCreates, true)) {
+        return Failure("prepare() failed due to illegal VOL_EXPLICIT_ENV_VAR_NAME");
+      }
     }
   }
 
@@ -697,6 +704,9 @@ Future<Option<ContainerLaunchInfo>> DockerVolumeDriverIsolator::prepare(
     if (dvdcliPaths[i].empty()) {
       dvdcliPaths[i] = DEFAULT_DVDCLI_BIN;
     }
+    if (explicitCreates[i].empty()) {
+      explicitCreates[i] = "false";
+    }
 
     // TODO consider not filling container path if it is empty.
     // Empty container path would mean leaving do not engage isolation on mount
@@ -720,6 +730,9 @@ Future<Option<ContainerLaunchInfo>> DockerVolumeDriverIsolator::prepare(
                .setOptions(mountOptions[i])
                .setContainerPath(containerPaths[i])
                .setDvdcliPath(dvdcliPaths[i])
+               .setExplicitCreate(
+                 (strings::lower(strings::trim(explicitCreates[i])).compare("true")==0)
+               )
                .build()
       );
 

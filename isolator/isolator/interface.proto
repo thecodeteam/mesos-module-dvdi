@@ -20,6 +20,9 @@ message ExternalMount {
 
   //the fully qualified path to the dvdcli binary path
   optional string dvdcli_path = 7;
+
+  //create the volume explicitly
+  optional bool explicit_create = 8;
 }
 
 // Our address book file is just one of these.
