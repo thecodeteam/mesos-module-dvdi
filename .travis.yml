@@ -12,14 +12,14 @@ script:
   - make mesos-0.25.1
   - make mesos-0.26.1
   - make mesos-0.27.2
-  - make mesos-0.28.1
+  - make mesos-0.28.2
   - make autoconf
   - make isolator-0.23.1
   - make isolator-0.24.2
   - make isolator-0.25.1
   - make isolator-0.26.1
   - make isolator-0.27.2
-  - make isolator-0.28.1
+  - make isolator-0.28.2
   - make bintray
 
 addons:

@@ -1,8 +1,8 @@
-FROM cantbewong/mesos-build-module-dev:0.28.1
+FROM cantbewong/mesos-build-module-dev:0.28.2
 MAINTAINER Steve Wong (EMCCODE)
 
 ENTRYPOINT cd /isolator && \
-    export ISOLATOR_VERSION=0.28.1 && \
+    export ISOLATOR_VERSION=0.28.2 && \
     export LD_LIBRARY_PATH=LD_LIBRARY_PATH:/usr/local/lib && \
     ./bootstrap && \
     rm -Rf build && \
