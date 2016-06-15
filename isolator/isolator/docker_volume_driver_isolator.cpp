@@ -177,6 +177,10 @@ Future<Nothing> DockerVolumeDriverIsolator::recover(
   LOG(INFO) << "dvdicheckpoint::recover() called";
   Result<State> resultState =
     mesos::internal::slave::state::recover(mesosWorkingDir, true);
+  if (resultState.isNone()) {
+    LOG(INFO) << "dvdicheckpoint::recover(): recover state is NONE";
+    return Nothing();
+  }
 
   State state = resultState.get();
   LOG(INFO) << "dvdicheckpoint::recover() returned: " << state.errors;
