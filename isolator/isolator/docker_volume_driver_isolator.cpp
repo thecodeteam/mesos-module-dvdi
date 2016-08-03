@@ -52,7 +52,7 @@ using std::array;
 using namespace mesos;
 using namespace mesos::slave;
 
-#if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 240
+#if MESOS_VERSION_INT > 200 && MESOS_VERSION_INT < 240
 using mesos::slave::ExecutorRunState;
 using mesos::slave::IsolatorProcess;
 using mesos::slave::Limitation;
@@ -123,7 +123,7 @@ Try<Isolator*> DockerVolumeDriverIsolator::create(
   mountPbFilename = path::join(DVDI_MOUNTLIST_PATH, DVDI_MOUNTLIST_FILENAME);
   LOG(INFO) << "using " << mountPbFilename;
 
-#if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 240
+#if MESOS_VERSION_INT > 200 && MESOS_VERSION_INT < 240
   process::Owned<IsolatorProcess> process(
       new DockerVolumeDriverIsolator(parameters));
 
@@ -139,7 +139,7 @@ DockerVolumeDriverIsolator::~DockerVolumeDriverIsolator()
   google::protobuf::ShutdownProtobufLibrary();
 }
 
-#if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 240
+#if MESOS_VERSION_INT > 200 && MESOS_VERSION_INT < 240
 Future<Nothing> DockerVolumeDriverIsolator::recover(
     const list<ExecutorRunState>& states,
     const hashset<ContainerID>& orphans)
@@ -260,7 +260,7 @@ Future<Nothing> DockerVolumeDriverIsolator::recover(
     legacyMounts.put(getExternalMountId(*(mount.get())), mount);
   }
 
-#if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 240
+#if MESOS_VERSION_INT > 200 && MESOS_VERSION_INT < 240
   foreach (const ExecutorRunState& state, states) {
 
     if (originalContainerMounts.contains(state.id.value())) {
@@ -358,7 +358,7 @@ bool DockerVolumeDriverIsolator::unmount(
               << VOL_DRIVER_CMD_OPTION << em.volumedriver() << " "
               << VOL_NAME_CMD_OPTION << em.volumename();
 
-#if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 240
+#if MESOS_VERSION_INT > 200 && MESOS_VERSION_INT < 240
     std::ostringstream cmdOut;
     Try<int> retcode = os::shell(&cmdOut, "%s %s %s%s %s%s",
       em.dvdcli_path().c_str(),
@@ -384,7 +384,7 @@ bool DockerVolumeDriverIsolator::unmount(
                    << "manually unmounted previously "
                    << retcode.error();
     } else {
-#if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 240
+#if MESOS_VERSION_INT > 200 && MESOS_VERSION_INT < 240
       LOG(INFO) << em.dvdcli_path() << " " << DVDCLI_UNMOUNT_CMD
         << " returned " << retcode.get() << ", " << cmdOut.str();
 #else
@@ -445,7 +445,7 @@ string DockerVolumeDriverIsolator::mount(
               << VOL_NAME_CMD_OPTION << em.volumename() << " "
               << options;
 
-#if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 240
+#if MESOS_VERSION_INT > 200 && MESOS_VERSION_INT < 240
     std::ostringstream cmdOut;
     Try<int> retcode = os::shell(&cmdOut, "%s %s %s%s %s%s %s %s",
       em.dvdcli_path().c_str(),
@@ -473,7 +473,7 @@ string DockerVolumeDriverIsolator::mount(
                  << " failed to execute on " << callerLabelForLogging
                  << retcode.error();
     } else {
-#if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 240
+#if MESOS_VERSION_INT > 200 && MESOS_VERSION_INT < 240
       if (retcode.get() != 0) {
         LOG(ERROR) << em.dvdcli_path() << " " << DVDCLI_MOUNT_CMD
                    << " returned errorcode " << retcode.get();
@@ -577,14 +577,14 @@ Failure DockerVolumeDriverIsolator::revertMountlist(
 // there are any problems parsing or mounting even one
 // mount, we want to exit with an error and no new
 // mounted volumes. Goal: make all mounts or none.
-#if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 240
+#if MESOS_VERSION_INT > 200 && MESOS_VERSION_INT < 240
 Future<Option<CommandInfo>> DockerVolumeDriverIsolator::prepare(
   const ContainerID& containerId,
   const ExecutorInfo& executorInfo,
   const string& directory,
   const Option<string>& rootfs,
   const Option<string>& user)
-#elif MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 270
+#elif MESOS_VERSION_INT > 200 && MESOS_VERSION_INT < 270
 Future<Option<ContainerPrepareInfo>> DockerVolumeDriverIsolator::prepare(
   const ContainerID& containerId,
   const ExecutorInfo& executorInfo,
@@ -603,9 +603,9 @@ Future<Option<ContainerLaunchInfo>> DockerVolumeDriverIsolator::prepare(
     return Failure("Container has already been prepared");
   }
 
-#if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT >= 280
+#if MESOS_VERSION_INT < 200 || MESOS_VERSION_INT >= 280
   const ExecutorInfo& executorInfo = containerConfig.executor_info();
-#elif MESOS_VERSION_INT != 0 && MESOS_VERSION_INT >= 270
+#elif MESOS_VERSION_INT >= 270
   const ExecutorInfo& executorInfo = containerConfig.executorinfo();
 #endif
 
@@ -617,11 +617,11 @@ Future<Option<ContainerLaunchInfo>> DockerVolumeDriverIsolator::prepare(
     return None();
   }
 
-#if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 240
+#if MESOS_VERSION_INT > 200 && MESOS_VERSION_INT < 240
   list<string> commands;
-#elif MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 250
+#elif MESOS_VERSION_INT > 200 && MESOS_VERSION_INT < 250
   ContainerPrepareInfo prepareInfo;
-#elif MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 270
+#elif MESOS_VERSION_INT > 200 && MESOS_VERSION_INT < 270
   ContainerPrepareInfo prepareInfo;
   prepareInfo.set_namespaces(CLONE_NEWNS);
 #else
@@ -867,10 +867,13 @@ Future<Option<ContainerLaunchInfo>> DockerVolumeDriverIsolator::prepare(
     LOG(INFO) << "queueing mount -n --rbind " << mountPoint
               << " " << containerPath;
 
-#if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 240
+#if MESOS_VERSION_INT > 200 && MESOS_VERSION_INT < 240
     // -n means don't write to /etc/mtab
     commands.push_back(
             "mount -n --rbind " + mountPoint + " " + containerPath);
+#elif MESOS_VERSION_INT <= 200
+    prepareInfo.add_pre_exec_commands()->set_value(
+        "mount -n --rbind " + mountPoint + " " + containerPath);
 #else
     prepareInfo.add_commands()->set_value(
             "mount -n --rbind " + mountPoint + " " + containerPath);
@@ -886,7 +889,7 @@ Future<Option<ContainerLaunchInfo>> DockerVolumeDriverIsolator::prepare(
   mesos::internal::slave::state::checkpoint(mountPbFilename,
     inUseMountsProtobuf);
 
-#if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 240
+#if MESOS_VERSION_INT > 200 && MESOS_VERSION_INT < 240
   CommandInfo command;
   command.set_value(strings::join(" && ", commands));
 
@@ -896,7 +899,7 @@ Future<Option<ContainerLaunchInfo>> DockerVolumeDriverIsolator::prepare(
 #endif
 }
 
-#if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 240
+#if MESOS_VERSION_INT > 200 && MESOS_VERSION_INT < 240
 Future<Limitation> DockerVolumeDriverIsolator::watch(
     const ContainerID& containerId)
 {

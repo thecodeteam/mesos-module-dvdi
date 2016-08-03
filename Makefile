@@ -1,11 +1,11 @@
 # MESOS_VERSIONS is a list of space, separated versions of mesos that
 # will be built.
-MESOS_VERSIONS := 0.23.1 0.24.2 0.25.1 0.26.1 0.27.2 0.28.2
+MESOS_VERSIONS := 0.23.1 0.24.2 0.25.1 0.26.1 0.27.2 0.28.2 1.0.0
 
 # ISO_VERSIONS is either equal to or a subset of the MESOS_VERSIONS
 # list. The versions in this list are the versions of Mesos against
 # which to build the isolator module.
-ISO_VERSIONS := 0.23.1 0.24.2 0.25.1 0.26.1 0.27.2 0.28.2
+ISO_VERSIONS := 0.23.1 0.24.2 0.25.1 0.26.1 0.27.2 0.28.2 1.0.0
 
 ########################################################################
 ##                             MAKEFLAGS                              ##
@@ -482,18 +482,18 @@ boto-clean:
 ########################################################################
 ##                              Protobuf                              ##
 ########################################################################
-PBUF_VER := 2.5.0
-PBUF_SRC_TAR := protobuf-$(PBUF_VER).tar.gz
+#PBUF_VER := 2.5.0
+PBUF_SRC_TAR = protobuf-$(PBUF_VER).tar.gz
 PBUF_SRC_URL := https://github.com/google/protobuf/releases/download
-PBUF_OPT_7Z := protobuf-$(PBUF_VER).7z
-PBUF_JAR_SRC_URL := http://search.maven.org/remotecontent?filepath=com/google/protobuf/protobuf-java/$(PBUF_VER)/protobuf-java-$(PBUF_VER).jar
-PBUF_SRC_DIR := $(DEPS_DIR)/protobuf-$(PBUF_VER)/src
-PBUF_OPT_DIR := $(DEPS_DIR)/protobuf-$(PBUF_VER)/opt
-PBUF_CONFIGURE := $(PBUF_SRC_DIR)/configure
-PBUF_MAKEFILE := $(PBUF_SRC_DIR)/Makefile
-PBUF_SRC_BIN := $(PBUF_SRC_DIR)/src/protoc
-PBUF_OPT_BIN := $(PBUF_OPT_DIR)/bin/protoc
-PROTOBUF := $(PBUF_OPT_DIR)/share/java/protobuf.jar
+PBUF_OPT_7Z = protobuf-$(PBUF_VER).7z
+PBUF_JAR_SRC_URL = http://search.maven.org/remotecontent?filepath=com/google/protobuf/protobuf-java/$(PBUF_VER)/protobuf-java-$(PBUF_VER).jar
+PBUF_SRC_DIR = $(DEPS_DIR)/protobuf-$(PBUF_VER)/src
+PBUF_OPT_DIR = $(DEPS_DIR)/protobuf-$(PBUF_VER)/opt
+PBUF_CONFIGURE = $(PBUF_SRC_DIR)/configure
+PBUF_MAKEFILE = $(PBUF_SRC_DIR)/Makefile
+PBUF_SRC_BIN = $(PBUF_SRC_DIR)/src/protoc
+PBUF_OPT_BIN = $(PBUF_OPT_DIR)/bin/protoc
+PROTOBUF = $(PBUF_OPT_DIR)/share/java/protobuf.jar
 
 protobuf-src: $(PBUF_CONFIGURE)
 $(PBUF_CONFIGURE):
@@ -573,6 +573,12 @@ endif
 
 define MESOS_BUILD_RULES
 MESOS_VER_$1 := $1
+MESOS_VER_MAJOR := $(shell echo $(MESOS_VER_$1) | cut -f1 -d.)
+ifeq ($(MESOS_VER_MAJOR),1)
+PBUF_VER := 2.6.1
+else
+PBUF_VER := 2.5.0
+endif
 MESOS_SRC_TAR_$1 := mesos-$$(MESOS_VER_$1).tar.gz
 MESOS_SRC_URL_$1 := http://archive.apache.org/dist/mesos
 MESOS_OPT_7Z_$1 := mesos-$$(MESOS_VER_$1).7z

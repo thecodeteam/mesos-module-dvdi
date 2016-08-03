@@ -9,48 +9,63 @@ RUN add-apt-repository ppa:george-edison55/cmake-3.x
 RUN apt-get update -q
 RUN apt-cache policy cmake
 RUN apt-get -qy install \
-  build-essential                         \
   autoconf                                \
   automake                                \
-  cmake=3.2.2-2~ubuntu14.04.1~ppa1        \
+  build-essential                         \
   ca-certificates                         \
-  gdb                                     \
-  wget                                    \
+  cmake=3.2.2-2~ubuntu14.04.1~ppa1        \
+  curl                                    \
+  g++                                     \
   git-core                                \
-  libcurl4-nss-dev                        \
-  libsasl2-dev                            \
-  libtool                                 \
-  libsvn-dev                              \
+  gdb                                     \
+  heimdal-clients                         \
   libapr1-dev                             \
-  libgoogle-glog-dev                      \
   libboost-dev                            \
-  protobuf-compiler                       \
+  libcurl4-nss-dev                        \
+  libffi-dev                              \
+  libgoogle-glog-dev                      \
   libprotobuf-dev                         \
+  libpython-dev                           \
+  libsasl2-dev                            \
+  libsasl2-modules-gssapi-heimdal         \
+  libssl-dev                              \
+  libsvn-dev                              \
+  libtool                                 \
   make                                    \
   python                                  \
   python2.7                               \
-  libpython-dev                           \
   python-dev                              \
+  python-pip                              \
   python-protobuf                         \
   python-setuptools                       \
-  heimdal-clients                         \
-  libsasl2-modules-gssapi-heimdal         \
   unzip                                   \
+  wget                                    \
   --no-install-recommends
+
+RUN pip install --upgrade pip
+RUN pip install --upgrade pyopenssl ndg-httpsclient pyasn1
+
+# Install the picojson headers
+RUN wget https://raw.githubusercontent.com/kazuho/picojson/v1.3.0/picojson.h -O /usr/local/include/picojson.h
 
 # Prepare to build Mesos
 RUN mkdir -p /mesos
 RUN mkdir -p /tmp
 RUN mkdir -p /usr/share/java/
-RUN wget http://search.maven.org/remotecontent?filepath=com/google/protobuf/protobuf-java/2.5.0/protobuf-java-2.5.0.jar -O protobuf.jar
+RUN wget http://search.maven.org/remotecontent?filepath=com/google/protobuf/protobuf-java/2.6.1/protobuf-java-2.6.1.jar -O protobuf.jar
 RUN mv protobuf.jar /usr/share/java/
 
 WORKDIR /mesos
+ENV LD_LIBRARY_PATH /usr/local/lib
 
-# Clone Mesos (master branch)
-RUN git clone https://github.com/apache/mesos.git /mesos
-RUN git checkout ceecad69bd9656cf405ca7378ad021c4ad51aaed
+# Clone Mesos (1.0.0 branch)
+ENV ISOLATOR_VERSION 1.0.0
+RUN git clone git://git.apache.org/mesos.git /mesos
+RUN git checkout c9b7058
 RUN git log -n 1
+
+RUN mkdir -p /mesos/3rdparty/libprocess/3rdparty
+RUN cd /mesos/3rdparty && tar -xzvf protobuf-2.6.1.tar.gz -C ./libprocess/3rdparty && cd /mesos/3rdparty/libprocess/3rdparty/protobuf-2.6.1/ && ./configure --prefix=/usr && make -j 2 && make install
 
 # Bootstrap
 RUN ./bootstrap
@@ -59,12 +74,10 @@ RUN ./bootstrap
 RUN mkdir build && cd build && ../configure --disable-java --disable-optimize --without-included-zookeeper --with-glog=/usr/local --with-protobuf=/usr --with-boost=/usr/local
 
 # Build Mesos
-RUN cd build && make -j 8 install
+RUN cd build && make -j 2 install
 
 # Install python eggs
 RUN easy_install /mesos/build/src/python/dist/mesos.interface-*.egg
-RUN easy_install /mesos/build/src/python/dist/mesos.native-*.egg
+#RUN easy_install /mesos/build/src/python/dist/mesos.native-*.egg
 
-# Extra
 
-RUN cd /mesos/3rdparty/libprocess/3rdparty && tar -zxvf protobuf-2.5.0.tar.gz && cd protobuf-2.5.0 && ./configure && make -j 8

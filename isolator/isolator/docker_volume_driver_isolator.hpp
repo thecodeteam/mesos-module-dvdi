@@ -64,7 +64,7 @@ static constexpr char DVDI_WORKDIR_PARAM_NAME[]   = "work_dir";
 static constexpr char DEFAULT_WORKING_DIR[]       = "/tmp/mesos";
 static constexpr char DEFAULT_DVDCLI_BIN[]        = "/usr/bin/dvdcli";
 
-#if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 240
+#if MESOS_VERSION_INT > 200 && MESOS_VERSION_INT < 240
 class DockerVolumeDriverIsolator: public mesos::slave::IsolatorProcess
 #else
 class DockerVolumeDriverIsolator: public mesos::slave::Isolator
@@ -79,7 +79,7 @@ public:
   // to keep running if a slave process goes down, AND
   // allows the slave process to reconnect with already running
   // slaves when it restarts
-#if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 240
+#if MESOS_VERSION_INT > 200 && MESOS_VERSION_INT < 240
   virtual process::Future<Nothing> recover(
     const std::list<mesos::slave::ExecutorRunState>& states,
     const hashset<ContainerID>& orphans);
@@ -105,14 +105,14 @@ public:
   //    this call is synchronous, and returns 0 if success
   //    actual call is defined below in DVDCLI_MOUNT_CMD
   // 5. Add entry to hashmap that contains root mountpath indexed by ContainerId
-#if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 240
+#if MESOS_VERSION_INT > 200 && MESOS_VERSION_INT < 240
   virtual process::Future<Option<CommandInfo>> prepare(
     const ContainerID& containerId,
     const ExecutorInfo& executorInfo,
     const std::string& directory,
     const Option<std::string>& rootfs,
     const Option<std::string>& user);
-#elif MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 270
+#elif MESOS_VERSION_INT > 200 && MESOS_VERSION_INT < 270
   virtual process::Future<Option<ContainerPrepareInfo>> prepare(
     const ContainerID& containerId,
     const ExecutorInfo& executorInfo,
@@ -130,7 +130,7 @@ public:
       pid_t pid);
 
   // no-op, mount occurs at prepare
-#if MESOS_VERSION_INT != 0 && MESOS_VERSION_INT < 240
+#if MESOS_VERSION_INT > 200 && MESOS_VERSION_INT < 240
   virtual process::Future<mesos::slave::Limitation> watch(
     const ContainerID& containerId);
 #else
