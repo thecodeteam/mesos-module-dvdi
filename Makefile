@@ -608,7 +608,7 @@ $$(MESOS_MAKEFILE_$1): $$(MESOS_CONFIGURE_$1) $$(MESOS_DEPS)
 	mkdir -p $$(@D) && \
 		cd $$(@D) && \
 		mkdir -p $$(MESOS_OPT_DIR_$1) && \
-		cp -r $(SVN_OPT_DIR)\* $$(MESOS_OPT_DIR_$1) && \
+		cp -r $(SVN_OPT_DIR)/* $$(MESOS_OPT_DIR_$1) && \
 		env CXXFLAGS="$$(CXXFLAGS)" \
 				CPPFLAGS="$$(CXXFLAGS)" \
 				PYTHONPATH="$$(PYTHONPATH):$$$$PYTHONPATH" \
