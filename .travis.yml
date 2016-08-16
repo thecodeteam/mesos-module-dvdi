@@ -1,53 +1,19 @@
-language: c++
+sudo: required
+
+language: python
+
+env:
+  - VER=1.0.0
+
+services:
+  - docker
+
+before_install:
+  - docker pull cantbewong/mesos-build-module-dev:1.0.0
+
+install:
+  - docker build -t travis/mesos-build-module-dvdi-dev:1.0.0 -f Dockerfile-mesos-module-dvdi-dev .
+  - docker run -ti -v $TRAVIS_BUILD_DIR/isolator/:/isolator travis/mesos-build-module-dvdi-dev:1.0.0 /bin/bash -c '/usr/bin/make all && cp /isolator/build/.libs/libmesos_dvdi_isolator-${ISOLATOR_VERSION}.so /isolator/'
 
 script:
-  - make svn
-  - make boost
-  - make boto
-  - make glog
-  - make protobuf PBUF_VER=2.5.0
-  - make protobuf PBUF_VER=2.6.1
-  - make picojson
-  - make mesos-0.23.1 PBUF_VER=2.5.0
-  - make mesos-0.24.2 PBUF_VER=2.5.0
-  - make mesos-0.25.1 PBUF_VER=2.5.0
-  - make mesos-0.26.1 PBUF_VER=2.5.0
-  - make mesos-0.27.2 PBUF_VER=2.5.0
-  - make mesos-0.28.2 PBUF_VER=2.5.0
-  - make mesos-1.0.0 PBUF_VER=2.6.1
-  - make autoconf
-  - make isolator-0.23.1 PBUF_VER=2.5.0
-  - make isolator-0.24.2 PBUF_VER=2.5.0
-  - make isolator-0.25.1 PBUF_VER=2.5.0
-  - make isolator-0.26.1 PBUF_VER=2.5.0
-  - make isolator-0.27.2 PBUF_VER=2.5.0
-  - make isolator-0.28.2 PBUF_VER=2.5.0
-  - make isolator-1.0.0 PBUF_VER=2.6.1
-  - make bintray
-
-addons:
-  apt:
-    sources:
-    - ubuntu-toolchain-r-test
-    packages:
-    - gdb
-    - g++-4.8
-    - libapr1-dev
-    - python-protobuf
-    - libaprutil1-dev
-    - libcurl4-nss-dev
-    - p7zip-full
-
-cache:
-  directories:
-    - /tmp/mesos-ubuntu-12.04-deps/.7zs
-
-deploy:
-  - provider: bintray
-    file: bintray-unstable-filtered.json
-    user: $BINTRAY_USER
-    key: $BINTRAY_KEY
-    skip_cleanup: true
-    on:
-      all_branches: true
-      condition: $TRAVIS_TAG =~ ^$ && ($TRAVIS_REPO_SLUG = 'emccode/mesos-module-dvdi' || $IGNORE_REPO_SLUG_CONDITION = true) && ($TRAVIS_BRANCH = master || $IGNORE_BRANCH_CONDITION = true)
+  - shasum $TRAVIS_BUILD_DIR/isolator/libmesos_dvdi_isolator-${VER}.so

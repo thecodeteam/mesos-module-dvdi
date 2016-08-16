@@ -1,5 +1,5 @@
 FROM ubuntu:14.04
-MAINTAINER Mesosphere <support@mesosphere.io>
+MAINTAINER EMC{code} <http://community.emccode.com>
 
 # Install Dependencies
 
@@ -80,4 +80,7 @@ RUN cd build && make -j 2 install
 RUN easy_install /mesos/build/src/python/dist/mesos.interface-*.egg
 #RUN easy_install /mesos/build/src/python/dist/mesos.native-*.egg
 
-
+# This image builds mesos and retains the resulting header and binaries.
+# It is intended to support mesos modle development
+# TO build this image:
+# docker build -t <docker-user-name>/mesos-build-module-dev:<ver> -f Dockerfile-mesos-modules-dev .

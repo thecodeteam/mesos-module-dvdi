@@ -1,12 +1,18 @@
 FROM cantbewong/mesos-build-module-dev:1.0.0
-MAINTAINER Steve Wong (EMCCODE)
+MAINTAINER EMC{code} <http://community.emccode.com>
 
-ENTRYPOINT cd /isolator && \
-    export ISOLATOR_VERSION=1.0.0 && \
-    export LD_LIBRARY_PATH=LD_LIBRARY_PATH:/usr/local/lib && \
-    ./bootstrap && \
-    rm -Rf build && \
-    mkdir build && \
-    cd build && \
-    ../configure --with-mesos-root=/mesos --with-mesos-build-dir=/mesos && \
-    make all
+VOLUME ["/isolator"]
+
+COPY ./docker-isolator-entrypoint.sh /
+ENTRYPOINT ["/docker-isolator-entrypoint.sh"]
+CMD ["/usr/bin/make", "all"]
+
+# To build Docker image:
+# docker build -t <docker-user-name>/mesos-build-module-dvdi-dev:<ver> -f Dockerfile-mesos-module-dvdi-dev .
+
+# default COMMAND simply builds isolator
+# use it like this, :
+# docker run -ti -v <path-to-git-clone>/mesos-module-dvdi/isolator/:/isolator <docker-user-name>/mesos-build-module-dvdi-dev:<ver>
+
+# to extract the .so to the mounted repo directory - you can over-ride the default like this:
+# docker run -ti -v <path-to-git-clone>/mesos-module-dvdi/isolator/:/isolator <docker-user-name>/mesos-build-module-dvdi-dev:<ver> /bin/bash -c  '/usr/bin/make all && cp /isolator/build/.libs/libmesos_dvdi_isolator-${ISOLATOR_VERSION}.so /isolator/'
