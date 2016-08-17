@@ -3,17 +3,22 @@ sudo: required
 language: python
 
 env:
+  - VER=0.23.1
+  - VER=0.24.1
+  - VER=0.25.1
+  - VER=0.26.1
+  - VER=0.27.2
+  - VER=0.28.2
   - VER=1.0.0
 
 services:
   - docker
 
 before_install:
-  - docker pull cantbewong/mesos-build-module-dev:1.0.0
+  - docker pull emccode/mesos-build-module-dev:${VER}
 
 install:
-  - docker build -t travis/mesos-build-module-dvdi-dev:1.0.0 -f Dockerfile-mesos-module-dvdi-dev .
-  - docker run -ti -v $TRAVIS_BUILD_DIR/isolator/:/isolator travis/mesos-build-module-dvdi-dev:1.0.0 /bin/bash -c '/usr/bin/make all && cp /isolator/build/.libs/libmesos_dvdi_isolator-${ISOLATOR_VERSION}.so /isolator/'
+  - docker run -ti -v $TRAVIS_BUILD_DIR/isolator/:/isolator emccode/mesos-build-module-dev:${VER} /bin/bash -c '/usr/bin/make all && cp /isolator/build/.libs/libmesos_dvdi_isolator-${ISOLATOR_VERSION}.so /isolator/'
 
 script:
   - shasum $TRAVIS_BUILD_DIR/isolator/libmesos_dvdi_isolator-${VER}.so
