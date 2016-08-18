@@ -3,22 +3,52 @@ sudo: required
 language: python
 
 env:
-  - VER=0.23.1
-  - VER=0.24.2
-  - VER=0.25.1
-  - VER=0.26.1
-  - VER=0.27.2
-  - VER=0.28.2
-  - VER=1.0.0
+  global:
+    - GIT_REGEX="^[^\d]*(\d+)\.(\d+)\.(\d+)-(\d+)-g(.*)"
+    - GIT_DESC=$(git describe --tags)
+  matrix:
+    - VER=0.23.1
+    - VER=0.24.2
+    - VER=0.25.1
+    - VER=0.26.1
+    - VER=0.27.2
+    - VER=0.28.2
+    - VER=1.0.0
 
 services:
   - docker
 
 before_install:
   - docker pull emccode/mesos-build-module-dev:${VER}
+  - git describe --tags
+  - if [[ $GIT_DESC =~ $GIT_REGEX ]]; then REL_MAJOR="${BASH_REMATCH[1]}"; fi
+  - REL_MINOR="${BASH_REMATCH[2]}"
+  - REL_PATCH="${BASH_REMATCH[3]}"
+  - REL_BUILD="${BASH_REMATCH[4]}"
+  - V_SEMVER="${REL_MAJOR}.${REL_MINOR}.${REL_PATCH}"
+  - SEMVER="${V_SEMVER}+${REL_BUILD}"
+  - SO_FILENAME="libmesos_dvdi_isolator-${SEMVER}+mesos-${ISOLATOR_VERSION}.so"
 
 install:
-  - docker run -ti -v $TRAVIS_BUILD_DIR/isolator/:/isolator emccode/mesos-build-module-dev:${VER} /bin/bash -c '/usr/bin/make all && cp /isolator/build/.libs/libmesos_dvdi_isolator-${ISOLATOR_VERSION}.so /isolator/'
+  - docker run -ti -v $TRAVIS_BUILD_DIR/isolator/:/isolator emccode/mesos-build-module-dev:${VER} /bin/bash -c '/usr/bin/make all && cp /isolator/build/.libs/libmesos_dvdi_isolator-${ISOLATOR_VERSION}.so /isolator/${SO_FILENAME}'
 
 script:
-  - shasum $TRAVIS_BUILD_DIR/isolator/libmesos_dvdi_isolator-${VER}.so
+  - shasum $TRAVIS_BUILD_DIR/isolator/${SO_FILENAME}
+
+before_deploy:
+  - V_BRANCH=$(shell git branch | grep '*' | awk '{print $$2}')
+  - V_SHA_LONG=$(shell git show HEAD -s --format=%H)
+  - V_EPOCH=$(shell date +%s)
+  - V_BUILD_DATE=$(shell perl -e 'use POSIX strftime; print strftime("%a, %d %b %Y %H:%M:%S %Z", localtime($(V_EPOCH)))')
+  - V_RELEASE_DATE=$(shell perl -e 'use POSIX strftime; print strftime("%Y-%m-%d", localtime($(V_EPOCH)))')
+  - sed -e 's/$${SEMVER}/$(V_SEMVER)/g' \
+    -e 's|$${DSCRIP}|$(V_SEMVER).Branch.$(V_BRANCH).Sha.$(V_SHA_LONG)|g' \
+    -e 's/$${RELDTE}/$(V_RELEASE_DATE)/g' \
+    bintray-unstable.json > bintray-unstable-filtered.json
+
+deploy:
+  - provider: bintray
+    file: bintray-unstable-filtered.json
+    user: $BINTRAY_USER
+    key: $BINTRAY_KEY
+    skip_cleanup: true
