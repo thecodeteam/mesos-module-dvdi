@@ -5,8 +5,9 @@ language: python
 env:
   global:
     - GIT_REGEX="^[^\d]*(\d+)\.(\d+)\.(\d+)-(\d+)-g(.*)"
+    - GIT_REGEX1="[^\d]*(\d+)\.\d+\.\d+-\d+-g.*"
     - GIT_DESC=$(git describe --tags)
-    - REL_MAJOR=$( expr match $GIT_DESC '[^\d]*(\d+)\.\d+\.\d+-\d+-g.*'  ) 
+    - REL_MAJOR=$( expr match $GIT_DESC $GIT_REGEX1 ) 
 #    - REL_MAJOR=$(test $(git describe --tags) =~ ${GIT_REGEX} ; echo "${BASH_REMATCH[1]}")
     - REL_MINOR=$( expr match $GIT_DESC '[^\d]*\d+\.(\d+)\.\d+-\d+-g.*'  ) 
   matrix:
