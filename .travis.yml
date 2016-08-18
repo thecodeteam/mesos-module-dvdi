@@ -6,7 +6,7 @@ env:
   global:
     - G_REGITEX="^[^\d]*(\d+)\.(\d+)\.(\d+)-(\d+)-g(.*)"
     - GIT_DESC=$(git describe --tags)
-    - REL_MAJOR=$([[ "$(git describe --tags)" =~ ${G_REGITEX} ]]; echo "${BASH_REMATCH[1]}")
+    - REL_MAJOR=$(test "$(git describe --tags)" =~ ${G_REGITEX} ; echo "${BASH_REMATCH[1]}")
   matrix:
     - VER=0.23.1
     - VER=0.24.2
