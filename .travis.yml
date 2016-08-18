@@ -21,13 +21,14 @@ services:
 before_install:
   - docker pull emccode/mesos-build-module-dev:${VER}
   - git describe --tags
-  - if [[ $GIT_DESC =~ $GIT_REGEX ]]; then REL_MAJOR="${BASH_REMATCH[1]}"; fi
-  - REL_MINOR="${BASH_REMATCH[2]}"
-  - REL_PATCH="${BASH_REMATCH[3]}"
-  - REL_BUILD="${BASH_REMATCH[4]}"
-  - V_SEMVER="${REL_MAJOR}.${REL_MINOR}.${REL_PATCH}"
-  - SEMVER="${V_SEMVER}+${REL_BUILD}"
-  - SO_FILENAME="libmesos_dvdi_isolator-${SEMVER}+mesos-${ISOLATOR_VERSION}.so"
+  - if test "$GIT_DESC =~ $GIT_REGEX"; then export REL_MAJOR="${BASH_REMATCH[1]}"; fi
+  - export REL_MINOR="${BASH_REMATCH[2]}"
+  - export REL_PATCH="${BASH_REMATCH[3]}"
+  - export REL_BUILD="${BASH_REMATCH[4]}"
+  - export V_SEMVER="${REL_MAJOR}.${REL_MINOR}.${REL_PATCH}"
+  - export SEMVER="${V_SEMVER}+${REL_BUILD}"
+  - export SO_FILENAME="libmesos_dvdi_isolator-${SEMVER}+mesos-${ISOLATOR_VERSION}.so"
+  - env
 
 install:
   - docker run -ti -v $TRAVIS_BUILD_DIR/isolator/:/isolator emccode/mesos-build-module-dev:${VER} /bin/bash -c '/usr/bin/make all && cp /isolator/build/.libs/libmesos_dvdi_isolator-${ISOLATOR_VERSION}.so /isolator/${SO_FILENAME}'
@@ -36,11 +37,11 @@ script:
   - shasum $TRAVIS_BUILD_DIR/isolator/${SO_FILENAME}
 
 before_deploy:
-  - V_BRANCH=$(shell git branch | grep '*' | awk '{print $$2}')
-  - V_SHA_LONG=$(shell git show HEAD -s --format=%H)
-  - V_EPOCH=$(shell date +%s)
-  - V_BUILD_DATE=$(shell perl -e 'use POSIX strftime; print strftime("%a, %d %b %Y %H:%M:%S %Z", localtime($(V_EPOCH)))')
-  - V_RELEASE_DATE=$(shell perl -e 'use POSIX strftime; print strftime("%Y-%m-%d", localtime($(V_EPOCH)))')
+  - export V_BRANCH=$(shell git branch | grep '*' | awk '{print $$2}')
+  - export V_SHA_LONG=$(shell git show HEAD -s --format=%H)
+  - export V_EPOCH=$(shell date +%s)
+  - export V_BUILD_DATE=$(shell perl -e 'use POSIX strftime; print strftime("%a, %d %b %Y %H:%M:%S %Z", localtime($(V_EPOCH)))')
+  - export V_RELEASE_DATE=$(shell perl -e 'use POSIX strftime; print strftime("%Y-%m-%d", localtime($(V_EPOCH)))')
   - sed -e 's/$${SEMVER}/$(V_SEMVER)/g' \
     -e 's|$${DSCRIP}|$(V_SEMVER).Branch.$(V_BRANCH).Sha.$(V_SHA_LONG)|g' \
     -e 's/$${RELDTE}/$(V_RELEASE_DATE)/g' \
