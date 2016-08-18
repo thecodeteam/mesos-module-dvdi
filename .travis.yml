@@ -6,10 +6,15 @@ env:
   global:
     - GIT_REGEX="^[^\d]*(\d+)\.(\d+)\.(\d+)-(\d+)-g(.*)"
     - GIT_REGEX1="[^\d]*(\d+)\.\d+\.\d+-\d+-g.*"
+    - GIT_REGEX2="[^\d]*\d+\.(\d+)\.\d+-\d+-g.*"
+    - GIT_REGEX3="[^\d]*\d+\.\d+\.(\d+)-\d+-g.*"
+    - GIT_REGEX4="[^\d]*\d+\.\d+\.\d+-(\d+)-g.*"
     - GIT_DESC=$(git describe --tags)
-    - REL_MAJOR=$( expr match $GIT_DESC $GIT_REGEX1 ) 
-#    - REL_MAJOR=$(test $(git describe --tags) =~ ${GIT_REGEX} ; echo "${BASH_REMATCH[1]}")
-    - REL_MINOR=$( expr match $GIT_DESC '[^\d]*\d+\.(\d+)\.\d+-\d+-g.*'  ) 
+    - REL_MAJOR=$( expr match $GIT_DESC $GIT_REGEX1 )
+    - REL_MINOR=$( expr match $GIT_DESC $GIT_REGEX1 )
+    - REL_PATCH=$( expr match $GIT_DESC $GIT_REGEX1 )
+    - REL_BUILD=$( expr match $GIT_DESC $GIT_REGEX1 )
+    - V_SEMVER="${REL_MAJOR}.${REL_MINOR}.${REL_PATCH}"
   matrix:
     - VER=0.23.1
     - VER=0.24.2
@@ -26,12 +31,8 @@ before_install:
   - env
   - docker pull emccode/mesos-build-module-dev:${VER}
   - git describe --tags
-  - if test "$GIT_DESC =~ $GIT_REGEX"; then export REL_MINOR="${BASH_REMATCH[2]}"; fi
-  - export REL_PATCH="${BASH_REMATCH[3]}"
-  - export REL_BUILD="${BASH_REMATCH[4]}"
-  - export V_SEMVER="${REL_MAJOR}.${REL_MINOR}.${REL_PATCH}"
   - export SEMVER="${V_SEMVER}+${REL_BUILD}"
-  - export SO_FILENAME="libmesos_dvdi_isolator-${SEMVER}+mesos-${ISOLATOR_VERSION}.so"
+  - export SO_FILENAME="libmesos_dvdi_isolator-${SEMVER}+mesos-${VER}.so"
   - env
 
 install:
