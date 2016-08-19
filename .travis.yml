@@ -25,7 +25,7 @@ before_install:
   - env
 
 install:
-  - docker run -ti -v $TRAVIS_BUILD_DIR/isolator/:/isolator emccode/mesos-build-module-dev:${VER} /bin/bash -c "\'echo "COPY-${SO_FILENAME}" &&/usr/bin/make all && cp /isolator/build/.libs/libmesos_dvdi_isolator-${ISOLATOR_VERSION}.so /isolator/${SO_FILENAME}\'"
+  - docker run -d -v $TRAVIS_BUILD_DIR/isolator/:/isolator emccode/mesos-build-module-dev:${VER} /bin/bash -c "\'/bin/echo "COPY-${SO_FILENAME}" &&/usr/bin/make all && cp /isolator/build/.libs/libmesos_dvdi_isolator-${ISOLATOR_VERSION}.so /isolator/${SO_FILENAME}\'"
   - ls -la $TRAVIS_BUILD_DIR/isolator/
 
 script:
