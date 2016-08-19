@@ -3,31 +3,19 @@ sudo: required
 language: python
 
 env:
-  global:
-    - GIT_REGEX="^[^\d]*(\d+)\.(\d+)\.(\d+)-(\d+)-g(.*)"
-    - GIT_REGEX1="[^\d]*(\d+)\.\d+\.\d+-\d+-g.*"
-    - GIT_REGEX2="[^\d]*\d+\.(\d+)\.\d+-\d+-g.*"
-    - GIT_REGEX3="[^\d]*\d+\.\d+\.(\d+)-\d+-g.*"
-    - GIT_REGEX4="[^\d]*\d+\.\d+\.\d+-(\d+)-g.*"
-    - GIT_DESC=$(git describe --tags)
-    - REL_MAJOR=$( echo "$GIT_DESC" | sed -rn 's/[^[:digit:]]*\([0-9]*\).*$/\1/p' )
-    - REL_MINOR=$( echo "$GIT_DESC" | sed -rn 's/[^[:digit:]]*[0-9]*.([0-9]*).*$/\1/p' )
-    - REL_PATCH=$( echo "$GIT_DESC" | sed -rn 's/[^[:digit:]]*[0-9]*.[0-9]*.([0-9]*).*$/\1/p' )
-    - REL_BUILD=$( echo "$GIT_DESC" | sed -rn 's/[^[:digit:]]*[0-9]*.[0-9].[0-9]*-([0-9]*).*$/\1/p' )
-    - V_SEMVER="${REL_MAJOR}.${REL_MINOR}.${REL_PATCH}"
-  matrix:
-    - VER=0.23.1
-    - VER=0.24.2
-    - VER=0.25.1
-    - VER=0.26.1
-    - VER=0.27.2
-    - VER=0.28.2
-    - VER=1.0.0
+  - VER=0.23.1
+  - VER=0.24.2
+  - VER=0.25.1
+  - VER=0.26.1
+  - VER=0.27.2
+  - VER=0.28.2
+  - VER=1.0.0
 
 services:
   - docker
 
 before_install:
+  - eval $(./set-travis-env.sh)
   - env
   - docker pull emccode/mesos-build-module-dev:${VER}
   - git describe --tags
@@ -42,11 +30,7 @@ script:
   - shasum $TRAVIS_BUILD_DIR/isolator/${SO_FILENAME}
 
 before_deploy:
-  - export V_BRANCH=$(shell git branch | grep '*' | awk '{print $$2}')
-  - export V_SHA_LONG=$(shell git show HEAD -s --format=%H)
-  - export V_EPOCH=$(shell date +%s)
-  - export V_BUILD_DATE=$(shell perl -e 'use POSIX strftime; print strftime("%a, %d %b %Y %H:%M:%S %Z", localtime($(V_EPOCH)))')
-  - export V_RELEASE_DATE=$(shell perl -e 'use POSIX strftime; print strftime("%Y-%m-%d", localtime($(V_EPOCH)))')
+
   - sed -e 's/$${SEMVER}/$(V_SEMVER)/g' \
     -e 's|$${DSCRIP}|$(V_SEMVER).Branch.$(V_BRANCH).Sha.$(V_SHA_LONG)|g' \
     -e 's/$${RELDTE}/$(V_RELEASE_DATE)/g' \
