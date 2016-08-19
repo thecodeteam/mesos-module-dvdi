@@ -30,11 +30,12 @@ script:
   - shasum $TRAVIS_BUILD_DIR/isolator/${SO_FILENAME}
 
 before_deploy:
-
+  - ls -la $TRAVIS_BUILD_DIR/isolator/
   - sed -e 's/$${SEMVER}/$(V_SEMVER)/g' \
     -e 's|$${DSCRIP}|$(V_SEMVER).Branch.$(V_BRANCH).Sha.$(V_SHA_LONG)|g' \
     -e 's/$${RELDTE}/$(V_RELEASE_DATE)/g' \
     bintray-unstable.json > bintray-unstable-filtered.json
+  - cat bintray-unstable-filtered.json
 
 deploy:
   - provider: bintray
