@@ -109,7 +109,7 @@ CMD ["/usr/bin/make", "all"]
 
 # default COMMAND simply builds isolator
 # use it like this:
-# docker run -ti -v <path-to-git-clone>/mesos-module-dvdi/isolator/:/isolator <docker-user-name>/mesos-build-module-dvdi-dev:<ver>
+# docker run -ti -v <path-to-git-clone>/mesos-module-dvdi/isolator/:/isolator <docker-user-name>/mesos-build-module-dev:<ver>
 
 # to extract the newly built .so to the mounted source directory volume mount - you should over-ride the default CMD like this:
-# docker run -ti -v <path-to-git-clone>/mesos-module-dvdi/isolator/:/isolator <docker-user-name>/mesos-build-module-dvdi-dev:<ver> /bin/bash -c  '/usr/bin/make all && cp /isolator/build/.libs/libmesos_dvdi_isolator-${ISOLATOR_VERSION}.so /isolator/'
+# docker run -ti -v <path-to-git-clone>/mesos-module-dvdi/isolator/:/isolator <docker-user-name>/mesos-build-module-dev:<ver> /bin/bash -c  '/usr/bin/make all && cp /isolator/build/.libs/libmesos_dvdi_isolator-${ISOLATOR_VERSION}.so /isolator/'
