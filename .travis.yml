@@ -15,22 +15,15 @@ services:
   - docker
 
 before_install:
-  - ./set-travis-env.sh
   - eval $(./set-travis-env.sh)
-  - env
   - docker pull emccode/mesos-build-module-dev:${VER}
-  - git describe --tags
   - export SEMVER="${V_SEMVER}+${REL_BUILD}"
   - export SO_FILENAME="libmesos_dvdi_isolator-${SEMVER}+mesos-${VER}.so"
-  - env
 
 install:
-#  - docker run -d -v $TRAVIS_BUILD_DIR/isolator/:/isolator emccode/mesos-build-module-dev:${VER} /bin/echo "COPY-${SO_FILENAME}" 
   - docker run -ti -v $TRAVIS_BUILD_DIR/isolator/:/isolator emccode/mesos-build-module-dev:${VER} /bin/bash -c  '/usr/bin/make all && cp -p -v /isolator/build/.libs/libmesos_dvdi_isolator-${ISOLATOR_VERSION}.so /isolator/'
   - docker logs $(docker ps -l -q)
-  - ls -la $TRAVIS_BUILD_DIR/isolator/
   - mv $TRAVIS_BUILD_DIR/isolator/libmesos_dvdi_isolator-${VER}.so $TRAVIS_BUILD_DIR/isolator/${SO_FILENAME}
-  - ls -la $TRAVIS_BUILD_DIR/isolator/
 
 script:
   - shasum $TRAVIS_BUILD_DIR/isolator/${SO_FILENAME}

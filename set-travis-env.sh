@@ -8,8 +8,8 @@ REL_MINOR=$( echo "$GIT_DESC" | sed -rn 's/[^[:digit:]]*[0-9]*.([0-9]*).*$/\1/p'
 REL_PATCH=$( echo "$GIT_DESC" | sed -rn 's/[^[:digit:]]*[0-9]*.[0-9]*.([0-9]*).*$/\1/p' )
 REL_BUILD=$( echo "$GIT_DESC" | sed -rn 's/[^[:digit:]]*[0-9]*.[0-9].[0-9]*-([0-9]*).*$/\1/p' )
 
-XTEMP=$(git branch | grep '*')
-export V_BRANCH=$( echo "$XTEMP" | sed -rn 's/\*\s(.+)$/\1/p' )
+# XTEMP=$(git branch | grep '*')
+# export V_BRANCH=$( echo "$XTEMP" | sed -rn 's/\*\s(.+)$/\1/p' )
 V_SHA_LONG=$(git show HEAD -s --format=%H)
 V_EPOCH=$(date +%s)
 V_RELEASE_DATE=$(date +"%Y-%m-%d")
