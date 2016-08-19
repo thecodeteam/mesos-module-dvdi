@@ -25,7 +25,7 @@ before_install:
   - env
 
 install:
-  - docker run -ti -v $TRAVIS_BUILD_DIR/isolator/:/isolator emccode/mesos-build-module-dev:${VER} /bin/bash -c '/usr/bin/make all && cp /isolator/build/.libs/libmesos_dvdi_isolator-${ISOLATOR_VERSION}.so /isolator/${SO_FILENAME}'
+  - docker run -ti -v $TRAVIS_BUILD_DIR/isolator/:/isolator emccode/mesos-build-module-dev:${VER} /bin/bash -c "\'/usr/bin/make all && cp /isolator/build/.libs/libmesos_dvdi_isolator-${ISOLATOR_VERSION}.so /isolator/${SO_FILENAME}\'"
   - ls -la $TRAVIS_BUILD_DIR/isolator/
 
 script:
@@ -34,7 +34,7 @@ script:
 before_deploy:
   - ls -la $TRAVIS_BUILD_DIR/isolator/
   - sed -e 's/$${SEMVER}/$(V_SEMVER)/g' \
-    -e 's|$${DSCRIP}|$(V_SEMVER).Branch.$(V_BRANCH).Sha.$(V_SHA_LONG)|g' \
+    -e 's|$${DSCRIP}|$(V_SEMVER).Branch.$(TRAVIS_BRANCH).Sha.$(V_SHA_LONG)|g' \
     -e 's/$${RELDTE}/$(V_RELEASE_DATE)/g' \
     bintray-unstable.json > bintray-unstable-filtered.json
   - cat bintray-unstable-filtered.json
