@@ -14,7 +14,7 @@
 
     "files": [{
         "includePattern": "isolator/(.+-.+\.so)",
-        "uploadPattern": "unstable/${SEMVER}/$1/$2"
+        "uploadPattern": "unstable/${SEMVER}/${MESOSVER}/$1"
     }],
 
     "publish": true

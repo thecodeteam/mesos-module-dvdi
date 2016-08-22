@@ -24,6 +24,7 @@ SO_FILENAME="libmesos_dvdi_isolator-${SEMVER}+mesos-${VER}.so"
 sed -e 's/${SEMVER}/'"$V_SEMVER/g" \
     -e 's|${DSCRIP}|'"$V_SEMVER.Branch.$TRAVIS_BRANCH.Sha.$V_SHA_LONG|g" \
     -e 's/${RELDTE}/'"$V_RELEASE_DATE/g" \
+    -e 's/${MESOSVER}/'"$VER/g" \
     bintray-unstable.json > bintray-unstable-filtered.json
 
 echo "export REL_MAJOR=$REL_MAJOR"
