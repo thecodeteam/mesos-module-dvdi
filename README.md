@@ -4,7 +4,7 @@ This repo contains the `Docker Volume Driver Isolator Module` for Mesos.  The pu
 
 The module leverages [dvdcli](https://github.com/clintonskitson/dvdcli) to enable any existing `Docker Volume Drivers` to be used **without** the Docker containerizer.  All Volume Drivers that work with `Docker`, **will also** work with `dvdcli` and thus this Isolator Module.
 
-Currently it targets Mesos 0.23.1, 0.24.2, 0.25.1, 0.26.1, 0.27.2, 0.28.2 and 1.0.0
+Currently it targets Mesos 0.23.1, 0.24.2, 0.25.1, 0.26.1, 0.27.2, 0.28.2 and 1.0.1
 
 ## Project Summary
 
@@ -23,17 +23,6 @@ In addition, notice how the `VOLUME_OPTS` parameter allows for specifying extra 
 There is one additional option, `overwritefs` which can be used to determine whether to overwrite the filesystem or not.  When the `overwritefs` flag is set, and the `Volume` already contains a EXT4/XFS filesystem, it is wiped clean on mount.  Otherwise a filesystem will **always** be created if EXT4/XFS is not found.
 
 These options are only available if the specified `Volume Driver` exposes them.  The `rexray` volume driver supported these options, but depends support from the `Storage Driver`.  See the [dvdcli](https://github.com/emccode/dvdcli) for a full list of options.
-
-```
-"env": {
-  "DVDI_VOLUME_NAME": "testing",
-  "DVDI_VOLUME_DRIVER": "platform1",
-  "DVDI_VOLUME_OPTS": "size=5,iops=150,volumetype=io1,newfstype=ext4,overwritefs=false",
-  "DVDI_VOLUME_NAME1": "testing2",
-  "DVDI_VOLUME_DRIVER1": "platform2",
-  "DVDI_VOLUME_OPTS1": "size=6,volumetype=gp2,newfstype=xfs,overwritefs=true"
-}
-```
 
 ## Mesos Agent Configuration
 
@@ -93,9 +82,10 @@ The value specified for the containerpath will affect the behavior of the contai
 - If a containerpath starts with something other than /tmp (meaning it is not destined to the /tmp folder), the directory must pre-exist or you get FAILURE
 - If a containerpath starts with /tmp (meaning it is destined to reside within the /tmp folder), the directory will be autocreated if needed and the volume mount will be owned by root:root if it doesn't preexist
 
-**Some examples...**
+**Some examples - pre 1.x Marathon**
 
 The example below will autogenerate the directory because its within the /tmp folder and provide containerization of the volume at /tmp/ebs-auto
+
 ```
 "env": {
   "DVDI_VOLUME_NAME": "VolXYZ",
@@ -106,6 +96,7 @@ The example below will autogenerate the directory because its within the /tmp fo
 ```
 
 The next example will fail if the directory /etc/ebs-explicit does not exist. The result of this will provide a mount with containerization at /etc/ebs-explicit
+
 ```
 "env": {
   "DVDI_VOLUME_NAME": "test12345",
@@ -114,6 +105,42 @@ The next example will fail if the directory /etc/ebs-explicit does not exist. Th
   "DVDI_VOLUME_CONTAINERPATH": "/etc/ebs-explicit"
 }
 ```
+
+Multiple volumes example:
+
+```
+"env": {
+  "DVDI_VOLUME_NAME": "testing",
+  "DVDI_VOLUME_DRIVER": "platform1",
+  "DVDI_VOLUME_OPTS": "size=5,iops=150,volumetype=io1,newfstype=ext4,overwritefs=false",
+  "DVDI_VOLUME_NAME1": "testing2",
+  "DVDI_VOLUME_DRIVER1": "platform2",
+  "DVDI_VOLUME_OPTS1": "size=6,volumetype=gp2,newfstype=xfs,overwritefs=true"
+}
+```
+
+**Example - 1.x Marathon**
+
+```
+...
+  "container": {
+    "type": "MESOS",
+    "volumes": [
+      {
+        "containerPath": "test-rexray-volume",
+        "external": {
+          "size": 100,
+          "name": "my-test-vol",
+          "provider": "dvdi",
+          "options": { "dvdi/driver": "rexray" }
+          },
+        "mode": "RW"
+      }
+    ]
+  },
+```
+
+See [Specifying an External Volume](https://mesosphere.github.io/marathon/docs/external-volumes.html)
 
 ### Docker Volume Driver CLI
 
@@ -187,6 +214,8 @@ to the environment variable name. (e.g DVDI_VOLUME_NAME1=).
 
 `curl -i -H 'Content-Type: application/json' -d @test.json localhost:8080/v2/apps`
 
+Pre 1.0 Marathon:
+
 ```
 {
   "id": "hello-play",
@@ -199,6 +228,36 @@ to the environment variable name. (e.g DVDI_VOLUME_NAME1=).
     "DVDI_VOLUME_DRIVER": "rexray",
     "DVDI_VOLUME_OPTS": "size=5,iops=150,volumetype=io1,newfstype=xfs,overwritefs=true"
   }
+}
+```
+
+Marathon 1.x:
+
+```
+{
+  "id": "hello-play",
+  "cmd": "while [ true ] ; do touch /var/lib/rexray/volumes/test12345/hello ; sleep 5 ; done",
+  "mem": 32,
+  "cpus": 0.1,
+  "instances": 1,
+  "container": {
+    "type": "MESOS",
+    "volumes": [
+      {
+        "containerPath": "test-rexray-volume",
+        "external": {
+          "size": 5,
+          "name": "test12345",
+          "provider": "dvdi",
+          "options": { "dvdi/driver": "rexray" }
+          },
+        "mode": "RW"
+      }
+    ]
+},
+"upgradeStrategy": {
+    "minimumHealthCapacity": 0,
+    "maximumOverCapacity": 0
 }
 ```
 
@@ -215,7 +274,7 @@ To simplify the process of assembling and configuring a build environment for th
 To compile your own customized isolator module. Replace X.Y.Z to correspond to the version of Mesos and its matching Isolator version.
 ```
 git clone https://github.com/emccode/mesos-module-dvdi
-cd mesos-module-dvdi
+cd mesos-module-dvdi/isolator
 docker run -ti -v `pwd`:/isolator emccode/mesos-build-module-dev:X.Y.Z /bin/bash -c  '/usr/bin/make all && cp -p -v /isolator/build/.libs/libmesos_dvdi_isolator-${ISOLATOR_VERSION}.so /isolator/'
 ```
 
