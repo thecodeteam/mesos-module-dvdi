@@ -541,7 +541,7 @@
       "Type": "AWS::EC2::Instance",
       "Properties": {
         "InstanceType": "t2.medium",
-        "ImageId": "ami-b4934fd4",
+        "ImageId": "ami-168f5376",
         "Tags": [
           {
             "Key": "Name",
@@ -618,7 +618,7 @@
       "Type": "AWS::EC2::Instance",
       "Properties": {
         "InstanceType": "t2.medium",
-        "ImageId": "ami-5e8e523e",
+        "ImageId": "ami-4c8c502c",
         "Tags": [
           {
             "Key": "Name",
