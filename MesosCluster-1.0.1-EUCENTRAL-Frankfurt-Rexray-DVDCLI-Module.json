@@ -387,7 +387,7 @@
       "Type": "AWS::EC2::Instance",
       "Properties": {
         "InstanceType": "t2.medium",
-        "ImageId": "ami-27be6047",
+        "ImageId": "ami-9f1ee2f0",
         "Tags": [
           {
             "Key": "Name",
@@ -464,7 +464,7 @@
       "Type": "AWS::EC2::Instance",
       "Properties": {
         "InstanceType": "t2.medium",
-        "ImageId": "ami-b6815fd6",
+        "ImageId": "ami-7f1ae610",
         "Tags": [
           {
             "Key": "Name",
@@ -541,7 +541,7 @@
       "Type": "AWS::EC2::Instance",
       "Properties": {
         "InstanceType": "t2.medium",
-        "ImageId": "ami-24be6044",
+        "ImageId": "ami-6c19e503",
         "Tags": [
           {
             "Key": "Name",
@@ -618,7 +618,7 @@
       "Type": "AWS::EC2::Instance",
       "Properties": {
         "InstanceType": "t2.medium",
-        "ImageId": "ami-18ba6478",
+        "ImageId": "ami-411fe32e",
         "Tags": [
           {
             "Key": "Name",
@@ -695,7 +695,7 @@
       "Type": "AWS::EC2::Instance",
       "Properties": {
         "InstanceType": "t2.medium",
-        "ImageId": "ami-25be6045",
+        "ImageId": "ami-7e1ae611",
         "Tags": [
           {
             "Key": "Name",
@@ -772,7 +772,7 @@
       "Type": "AWS::EC2::Instance",
       "Properties": {
         "InstanceType": "t2.medium",
-        "ImageId": "ami-83be60e3",
+        "ImageId": "ami-de1fe3b1",
         "Tags": [
           {
             "Key": "Name",
