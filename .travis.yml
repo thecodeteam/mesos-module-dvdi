@@ -8,8 +8,9 @@ env:
   - VER=0.25.1
   - VER=0.26.1
   - VER=0.27.2
-  - VER=0.28.2
+  - VER=0.28.3
   - VER=1.0.1
+  - VER=1.1.0
 
 services:
   - docker
