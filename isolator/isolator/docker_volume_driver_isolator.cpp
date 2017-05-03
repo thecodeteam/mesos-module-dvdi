@@ -624,6 +624,10 @@ Future<Option<ContainerLaunchInfo>> DockerVolumeDriverIsolator::prepare(
 #elif MESOS_VERSION_INT > 200 && MESOS_VERSION_INT < 270
   ContainerPrepareInfo prepareInfo;
   prepareInfo.set_namespaces(CLONE_NEWNS);
+#elif MESOS_VERSION_INT >= 120 && MESOS_VERSION_INT < 130
+  // This makes this file compatible with the changes for Mesos v1.2.0
+  ContainerLaunchInfo prepareInfo;
+  prepareInfo.add_clone_namespaces(CLONE_NEWNS);
 #else
   //yes, this should be called launchInfo, but it side step making a lot of
   //code changes.

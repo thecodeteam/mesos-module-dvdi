@@ -11,6 +11,7 @@ env:
   - VER=0.28.3
   - VER=1.0.1
   - VER=1.1.0
+  - VER=1.2.0
 
 services:
   - docker
